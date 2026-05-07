@@ -1,7 +1,6 @@
-"""기업분석 ReAct 에이전트 노드"""
+"""기업분석 에이전트 노드"""
 
-from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
@@ -14,7 +13,7 @@ from stock_agent.tools.yfinance_tools import (
 )
 from stock_agent.tools.ticker_mapping import resolve_ticker
 
-# ReAct 에이전트 생성
+# 에이전트 생성
 company_tools = [
     resolve_ticker,
     get_stock_overview,
@@ -23,10 +22,10 @@ company_tools = [
     get_recent_news,
 ]
 
-company_agent = create_react_agent(
-    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
+company_agent = create_agent(
+    model=DEFAULT_MODEL,
     tools=company_tools,
-    prompt=COMPANY_AGENT_PROMPT,
+    system_prompt=COMPANY_AGENT_PROMPT,
 )
 
 

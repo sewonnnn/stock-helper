@@ -1,21 +1,20 @@
-"""뉴스서치 ReAct 에이전트 노드"""
+"""뉴스서치 에이전트 노드"""
 
-from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
 from stock_agent.prompts.news import NEWS_AGENT_PROMPT
-from stock_agent.tools.tavily_tools import tavily_search
+from stock_agent.tools.tavily_tools import tavily_search_news
 from stock_agent.tools.ticker_mapping import resolve_ticker
 
-# ReAct 에이전트 생성
-news_tools = [resolve_ticker, tavily_search]
+# 에이전트 생성
+news_tools = [resolve_ticker, tavily_search_news]
 
-news_agent = create_react_agent(
-    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
+news_agent = create_agent(
+    model=DEFAULT_MODEL,
     tools=news_tools,
-    prompt=NEWS_AGENT_PROMPT,
+    system_prompt=NEWS_AGENT_PROMPT,
 )
 
 

@@ -18,6 +18,4 @@ Important:
 - ALL prices must be displayed in KRW (원):
   - Korean stocks: already in KRW, show as-is (e.g., "1주당 65,500원")
   - US/foreign stocks: the tool returns "krw_price" (원화 환산가). You MUST show the KRW price as the primary display, with USD in parentheses. Example: "1주당 416,941원 ($287.51, 환율 1,450원/$)"
-- NEVER show "$265,500" style — always 원 first for all stocks.
-
-User question: {question}"""
+- NEVER show "$265,500" style — always 원 first for all stocks."""

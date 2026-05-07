@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     success: bool
     data: StockResponse | None = None
+    route: str | None = None
     error: str | None = None
 
 
@@ -41,8 +42,9 @@ async def chat(request: ChatRequest):
             "final_answer": None,
         })
         final_answer = result.get("final_answer")
+        route = result.get("route", "")
         if final_answer:
-            return ChatResponse(success=True, data=final_answer)
+            return ChatResponse(success=True, data=final_answer, route=route)
         else:
             return ChatResponse(
                 success=True,

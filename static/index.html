@@ -35,7 +35,7 @@
 
     <!-- 면책문구 고정 배너 -->
     <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
-        <span class="text-xs text-amber-700">본 내용은 투자 권유가 아닙니다. 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다.</span>
+        <span class="text-xs text-amber-700">본 내용은 투자 권유가 아닙니다. 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다. · 주가 데이터는 15~20분 지연될 수 있습니다.</span>
     </div>
 
     <!-- 메인 영역 -->
@@ -128,7 +128,7 @@
                 removeMessage(loadingId);
 
                 if (result.success && result.data) {
-                    addBotResponse(result.data);
+                    addBotResponse(result.data, result.route);
                 } else {
                     addErrorMessage(result.error || '응답을 생성할 수 없습니다.');
                 }
@@ -150,13 +150,19 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        const AI_ICON = `<div class="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mr-3 mt-1">
+            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="8" width="18" height="12" rx="3" ry="3"/><circle cx="9" cy="14" r="1.5" fill="#3b82f6"/><circle cx="15" cy="14" r="1.5" fill="#3b82f6"/><rect x="10" y="4" width="4" height="4" rx="1"/><line x1="12" y1="2" x2="12" y2="4" stroke="white" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="1.5" r="1" fill="white"/>
+            </svg>
+        </div>`;
+
         function addLoadingMessage() {
             const container = document.getElementById('chatContainer');
             const id = 'loading-' + Date.now();
             const div = document.createElement('div');
             div.id = id;
-            div.className = 'flex justify-start fade-in';
-            div.innerHTML = `<div class="bg-gray-200 text-gray-600 px-4 py-2 rounded-2xl rounded-bl-md text-sm"><span class="loading-dots">분석 중</span></div>`;
+            div.className = 'flex justify-start items-start fade-in';
+            div.innerHTML = `${AI_ICON}<div class="bg-gray-200 text-gray-600 px-4 py-2 rounded-2xl rounded-bl-md text-sm"><span class="loading-dots">분석 중</span></div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
             return id;
@@ -170,22 +176,22 @@
         function addErrorMessage(text) {
             const container = document.getElementById('chatContainer');
             const div = document.createElement('div');
-            div.className = 'flex justify-start fade-in';
-            div.innerHTML = `<div class="bg-red-50 text-red-700 px-4 py-2 rounded-2xl rounded-bl-md text-sm border border-red-200">${escapeHtml(text)}</div>`;
+            div.className = 'flex justify-start items-start fade-in';
+            div.innerHTML = `${AI_ICON}<div class="bg-red-50 text-red-700 px-4 py-2 rounded-2xl rounded-bl-md text-sm border border-red-200">${escapeHtml(text)}</div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         }
 
-        function addBotResponse(data) {
+        function addBotResponse(data, route) {
             const container = document.getElementById('chatContainer');
             const div = document.createElement('div');
-            div.className = 'flex justify-start fade-in w-full';
-            div.innerHTML = `<div class="bg-white border border-gray-200 rounded-2xl rounded-bl-md p-5 max-w-2xl w-full shadow-sm">${renderResponse(data)}</div>`;
+            div.className = 'flex justify-start items-start fade-in w-full';
+            div.innerHTML = `${AI_ICON}<div class="bg-white border border-gray-200 rounded-2xl rounded-bl-md p-5 max-w-2xl w-full shadow-sm">${renderResponse(data, route)}</div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         }
 
-        function renderResponse(data) {
+        function renderResponse(data, route) {
             let html = '';
 
             // 면책문구는 상단 고정 배너로 이동 (카드 내 생략)
@@ -301,12 +307,18 @@
 
             // 인사이트
             if (data.인사이트) {
-                const isGeneral = !data.종목 && !data.가격;
-                const title = isGeneral ? '검색 결과' : '핵심 인사이트';
-                html += `<div class="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                    <div class="text-sm font-medium text-blue-800 mb-1">${title}</div>
-                    <div class="text-sm text-blue-700 leading-relaxed space-y-2">${renderMarkdown(data.인사이트)}</div>
-                </div>`;
+                if (route === 'company' || route === 'news') {
+                    // 핵심 인사이트 — 연한 파란색 카드
+                    html += `<div class="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <div class="text-sm font-medium text-blue-800 mb-1">핵심 인사이트</div>
+                        <div class="text-sm text-blue-700 leading-relaxed space-y-2">${renderMarkdown(data.인사이트)}</div>
+                    </div>`;
+                } else {
+                    // general, advisor 등 — 일반 본문 스타일
+                    html += `<div class="mb-4">
+                        <div class="text-sm text-gray-700 leading-relaxed space-y-2">${renderMarkdown(data.인사이트)}</div>
+                    </div>`;
+                }
             }
 
             // 출처 + 확신도

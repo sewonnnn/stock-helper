@@ -11,7 +11,7 @@ from stock_agent.utils.state import GraphState
 
 class RouteQuery(BaseModel):
     """질문 라우팅 결과"""
-    datasource: str = Field(description='"company", "news", "glossary", or "general"')
+    datasource: str = Field(description='"company", "news", "glossary", "advisor", or "general"')
 
 
 question_router = (

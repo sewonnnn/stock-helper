@@ -1,8 +1,8 @@
 """메인 LangGraph StateGraph 조립
 
 흐름:
-  슈퍼바이저 → (company | news | general) → 검증 → 응답
-  슈퍼바이저 → glossary → 직통 응답 (Self-RAG 내부 검증 완료이므로 스킵)
+  슈퍼바이저 → (company | news) → 검증 → 응답
+  슈퍼바이저 → (glossary | general | advisor) → 직통 응답
   검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
 """
 
@@ -16,6 +16,7 @@ from stock_agent.nodes.company import company_node
 from stock_agent.nodes.news import news_node
 from stock_agent.nodes.glossary import glossary_node
 from stock_agent.nodes.general import general_node
+from stock_agent.nodes.advisor import advisor_node
 from stock_agent.nodes.validator import validator_node
 from stock_agent.nodes.responder import responder_node
 
@@ -28,6 +29,7 @@ def route_by_supervisor(state: GraphState) -> str:
         "news": "news",
         "glossary": "glossary",
         "general": "general",
+        "advisor": "advisor",
     }
     return mapping.get(route, "general")
 
@@ -92,6 +94,32 @@ def general_direct_response(state: GraphState) -> dict:
     }
 
 
+def advisor_direct_response(state: GraphState) -> dict:
+    """advisor는 웹 검색 기반 맞춤 안내이므로 Responder 스킵.
+    draft_answer를 인사이트 필드에 그대로 전달합니다."""
+    import re
+
+    draft = state["draft_answer"]
+    source_data = state["agent_results"].get("source_data", "")
+
+    # 본문에서 인라인 출처 링크 제거
+    clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
+    clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
+
+    # source_data에서 URL 추출
+    sources = []
+    urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
+    sources = list(dict.fromkeys(urls))[:5]
+
+    return {
+        "final_answer": StockResponse(
+            인사이트=clean_draft,
+            출처=sources,
+            확신도="중간",
+        )
+    }
+
+
 def build_graph() -> StateGraph:
     """메인 그래프를 조립하여 반환합니다."""
 
@@ -104,6 +132,8 @@ def build_graph() -> StateGraph:
     workflow.add_node("glossary", glossary_node)
     workflow.add_node("general", general_node)
     workflow.add_node("general_response", general_direct_response)
+    workflow.add_node("advisor", advisor_node)
+    workflow.add_node("advisor_response", advisor_direct_response)
     workflow.add_node("glossary_response", glossary_direct_response)
     workflow.add_node("validator", validator_node)
     workflow.add_node("responder", responder_node)
@@ -121,6 +151,7 @@ def build_graph() -> StateGraph:
             "news": "news",
             "glossary": "glossary",
             "general": "general",
+            "advisor": "advisor",
         },
     )
 
@@ -131,6 +162,10 @@ def build_graph() -> StateGraph:
     # general → 직통 응답 (웹 검색 결과 그대로 전달)
     workflow.add_edge("general", "general_response")
     workflow.add_edge("general_response", END)
+
+    # advisor → 직통 응답 (맞춤 안내 그대로 전달)
+    workflow.add_edge("advisor", "advisor_response")
+    workflow.add_edge("advisor_response", END)
 
     # glossary → 직통 응답 (validator + responder 스킵)
     workflow.add_edge("glossary", "glossary_response")

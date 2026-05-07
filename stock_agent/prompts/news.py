@@ -15,6 +15,4 @@ Rules:
 - Present facts only — never add your own market predictions or investment advice.
 - If no relevant news is found, say "최근 관련 뉴스를 찾을 수 없습니다."
 - Respond entirely in Korean, except for source names and URLs.
-- Maximum 5 news items per response.
-
-User question: {question}"""
+- Maximum 5 news items per response."""
