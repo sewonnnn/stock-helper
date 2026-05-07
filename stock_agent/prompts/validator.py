@@ -1,3 +1,5 @@
+#  사실 검증
+
 VALIDATOR_PROMPT = """You are a fact-checking validator for a stock information assistant.
 
 Your job is to compare the draft answer against the original source data and verify factual accuracy.

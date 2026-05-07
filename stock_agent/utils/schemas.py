@@ -61,3 +61,4 @@ class StockResponse(BaseModel):
     용어설명: Optional[str] = None
     출처: list[str] = []
     확신도: Literal["높음", "중간", "낮음"] = "중간"
+    후속질문: list[str] = Field(default_factory=list, description="사용자가 이어서 물어볼 만한 후속 질문 2~3개")

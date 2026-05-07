@@ -1,12 +1,13 @@
 """메인 LangGraph StateGraph 조립
 
 흐름:
-  슈퍼바이저 → (company | news) → 검증 → 응답
-  슈퍼바이저 → (glossary | general | advisor) → 직통 응답
+  맥락 보강 → 슈퍼바이저 → (company | news) → 검증 → 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → (glossary | general | advisor) → 직통 응답 → 히스토리 저장
   검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
 """
 
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
 from stock_agent.utils.state import GraphState
 from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
@@ -19,6 +20,52 @@ from stock_agent.nodes.general import general_node
 from stock_agent.nodes.advisor import advisor_node
 from stock_agent.nodes.validator import validator_node
 from stock_agent.nodes.responder import responder_node
+
+
+def enrich_question(state: GraphState) -> dict:
+    """이전 대화 맥락이 있으면 현재 질문 앞에 붙여서 보강합니다."""
+    chat_history = state.get("chat_history", [])
+    question = state["question"]
+
+    # 이전 메시지가 없으면 (첫 메시지) 보강 불필요
+    if len(chat_history) <= 1:
+        return {}
+
+    # 마지막은 현재 사용자 메시지이므로 그 이전까지만 맥락으로 사용
+    previous = chat_history[:-1][-10:]  # 최근 5턴(10메시지)
+    context_lines = []
+    for msg in previous:
+        role = "사용자" if msg.get("role") == "user" else "AI"
+        context_lines.append(f"{role}: {msg.get('content', '')}")
+
+    enriched = (
+        "[이전 대화 맥락]\n"
+        + "\n".join(context_lines)
+        + f"\n\n[현재 질문]\n{question}\n\n"
+        + "위 대화 맥락을 참고하여 현재 질문에 답변하세요. "
+        + "대명사나 생략된 주어는 맥락에서 추론하세요."
+    )
+    return {"question": enriched}
+
+
+def save_history(state: GraphState) -> dict:
+    """최종 응답 요약을 chat_history에 추가합니다."""
+    final_answer = state.get("final_answer")
+    if not final_answer:
+        return {"chat_history": [{"role": "assistant", "content": "응답 실패"}]}
+
+    parts = []
+    if final_answer.종목:
+        parts.append(f"{final_answer.종목.company_name}({final_answer.종목.ticker})")
+    if final_answer.가격:
+        parts.append(f"현재가 ${final_answer.가격.current_price}")
+    if final_answer.인사이트:
+        parts.append(final_answer.인사이트[:150])
+    if final_answer.용어설명:
+        parts.append(final_answer.용어설명[:150])
+
+    summary = ", ".join(parts) if parts else "응답 완료"
+    return {"chat_history": [{"role": "assistant", "content": summary}]}
 
 
 def route_by_supervisor(state: GraphState) -> str:
@@ -49,13 +96,19 @@ def increment_retry(state: GraphState) -> dict:
 
 
 def _filter_by_trusted_domains(urls: list[str], trusted_domains: list[str]) -> list[str]:
-    """신뢰 도메인에 속하는 URL만 필터링합니다."""
+    """신뢰 도메인에 속하는 URL만 필터링합니다. PDF 등 파일 링크는 제외."""
     from urllib.parse import urlparse
+
+    _EXCLUDED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip"}
 
     filtered = []
     for url in urls:
         try:
-            hostname = urlparse(url).hostname or ""
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ""
+            path_lower = parsed.path.lower()
+            if any(path_lower.endswith(ext) for ext in _EXCLUDED_EXTENSIONS):
+                continue
             if any(hostname == d or hostname.endswith("." + d) for d in trusted_domains):
                 filtered.append(url)
         except Exception:
@@ -83,11 +136,24 @@ def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
         return [url for url in results if url]
 
 
+def _extract_followups(text: str) -> tuple[str, list[str]]:
+    """텍스트 끝에서 '후속질문: A|B|C' 패턴을 추출하고 본문과 분리합니다."""
+    import re
+    match = re.search(r'후속질문\s*[:：]\s*(.+)$', text, re.MULTILINE)
+    if not match:
+        return text, []
+    followups = [q.strip() for q in match.group(1).split('|') if q.strip()][:3]
+    clean_text = text[:match.start()].rstrip()
+    return clean_text, followups
+
+
 def glossary_direct_response(state: GraphState) -> dict:
     """glossary는 Self-RAG 내부에서 이미 검증 완료이므로 Responder 스킵.
     직접 StockResponse를 구성합니다."""
     draft = state["draft_answer"]
     source_data = state["agent_results"].get("source_data", "")
+
+    clean_draft, followups = _extract_followups(draft)
 
     sources = []
     if source_data:
@@ -95,9 +161,10 @@ def glossary_direct_response(state: GraphState) -> dict:
 
     return {
         "final_answer": StockResponse(
-            용어설명=draft,
+            용어설명=clean_draft,
             출처=sources,
             확신도="높음",
+            후속질문=followups,
         )
     }
 
@@ -109,6 +176,9 @@ def general_direct_response(state: GraphState) -> dict:
 
     draft = state["draft_answer"]
     source_data = state["agent_results"].get("source_data", "")
+
+    # 후속질문 추출
+    draft, followups = _extract_followups(draft)
 
     # 본문에서 인라인 출처 링크 제거: [출처: 매일경제](url) → 제거
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
@@ -126,6 +196,7 @@ def general_direct_response(state: GraphState) -> dict:
             인사이트=clean_draft,
             출처=sources,
             확신도="중간",
+            후속질문=followups,
         )
     }
 
@@ -137,6 +208,9 @@ def advisor_direct_response(state: GraphState) -> dict:
 
     draft = state["draft_answer"]
     source_data = state["agent_results"].get("source_data", "")
+
+    # 후속질문 추출
+    draft, followups = _extract_followups(draft)
 
     # 본문에서 인라인 출처 링크 제거
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
@@ -153,16 +227,18 @@ def advisor_direct_response(state: GraphState) -> dict:
             인사이트=clean_draft,
             출처=sources,
             확신도="중간",
+            후속질문=followups,
         )
     }
 
 
-def build_graph() -> StateGraph:
-    """메인 그래프를 조립하여 반환합니다."""
+def build_graph():
+    """메인 그래프를 조립하여 반환합니다. MemorySaver checkpointer 포함."""
 
     workflow = StateGraph(GraphState)
 
     # 노드 등록
+    workflow.add_node("enrich_question", enrich_question)
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("company", company_node)
     workflow.add_node("news", news_node)
@@ -175,9 +251,11 @@ def build_graph() -> StateGraph:
     workflow.add_node("validator", validator_node)
     workflow.add_node("responder", responder_node)
     workflow.add_node("increment_retry", increment_retry)
+    workflow.add_node("save_history", save_history)
 
-    # 진입점
-    workflow.set_entry_point("supervisor")
+    # 진입점: 맥락 보강 → 슈퍼바이저
+    workflow.set_entry_point("enrich_question")
+    workflow.add_edge("enrich_question", "supervisor")
 
     # 슈퍼바이저 → 에이전트 (조건부 라우팅)
     workflow.add_conditional_edges(
@@ -196,17 +274,17 @@ def build_graph() -> StateGraph:
     workflow.add_edge("company", "validator")
     workflow.add_edge("news", "validator")
 
-    # general → 직통 응답 (웹 검색 결과 그대로 전달)
+    # general → 직통 응답 → 히스토리 저장
     workflow.add_edge("general", "general_response")
-    workflow.add_edge("general_response", END)
+    workflow.add_edge("general_response", "save_history")
 
-    # advisor → 직통 응답 (맞춤 안내 그대로 전달)
+    # advisor → 직통 응답 → 히스토리 저장
     workflow.add_edge("advisor", "advisor_response")
-    workflow.add_edge("advisor_response", END)
+    workflow.add_edge("advisor_response", "save_history")
 
-    # glossary → 직통 응답 (validator + responder 스킵)
+    # glossary → 직통 응답 → 히스토리 저장
     workflow.add_edge("glossary", "glossary_response")
-    workflow.add_edge("glossary_response", END)
+    workflow.add_edge("glossary_response", "save_history")
 
     # 검증 → 응답 or 재시도 (조건부)
     workflow.add_conditional_edges(
@@ -221,10 +299,11 @@ def build_graph() -> StateGraph:
     # 재시도 → 슈퍼바이저로 복귀
     workflow.add_edge("increment_retry", "supervisor")
 
-    # 응답 → 종료
-    workflow.add_edge("responder", END)
+    # 응답 → 히스토리 저장 → 종료
+    workflow.add_edge("responder", "save_history")
+    workflow.add_edge("save_history", END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=MemorySaver())
 
 
 # 그래프 인스턴스

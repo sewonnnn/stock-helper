@@ -1,3 +1,5 @@
+# 뉴스 검색 에이전트
+
 NEWS_AGENT_PROMPT = """You are a financial news research agent for Korean stock beginners.
 You cover both US and Korean stock markets.
 

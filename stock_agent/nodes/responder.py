@@ -3,14 +3,14 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
-from stock_agent.utils.constants import DEFAULT_MODEL, UNKNOWN_RESPONSE
+from stock_agent.utils.constants import LIGHT_MODEL, UNKNOWN_RESPONSE
 from stock_agent.utils.state import GraphState
 from stock_agent.utils.schemas import StockResponse
 from stock_agent.prompts.responder import RESPONDER_PROMPT
 
 responder_chain = (
     ChatPromptTemplate.from_template(RESPONDER_PROMPT)
-    | ChatOpenAI(model=DEFAULT_MODEL, temperature=0).with_structured_output(StockResponse)
+    | ChatOpenAI(model=LIGHT_MODEL, temperature=0).with_structured_output(StockResponse)
 )
 
 

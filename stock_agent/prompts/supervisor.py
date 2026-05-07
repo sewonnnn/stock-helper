@@ -1,3 +1,5 @@
+# 질문을 5개 라우트로 분류
+
 SUPERVISOR_PROMPT = """You are a routing supervisor for a Korean stock assistant.
 
 Given the user's question in Korean, classify it into exactly ONE of these categories:
@@ -14,6 +16,7 @@ Rules:
 - If the question is about a term/concept, choose "glossary" ONLY if it's clearly asking for a definition.
 - If no specific company, no personal context, and not a term definition, choose "general".
 - If unsure between "advisor" and "general", choose "advisor" if ANY personal info is present.
+- If the question contains "[이전 대화 맥락]" and "[현재 질문]", read the context to understand what entity or topic the user is referring to (e.g., pronouns like "그 회사"), then route based on the intent of "[현재 질문]" only.
 
 User question: {question}
 

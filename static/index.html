@@ -15,7 +15,7 @@
 
         /* ── 레이아웃 ── */
         .app { display: flex; height: 100vh; }
-        .sidebar { width: 240px; background: #fff; color: #1f2937; display: flex; flex-direction: column; flex-shrink: 0; border-right: 1px solid #e5e7eb; }
+        .sidebar { width: 280px; background: #fff; color: #1f2937; display: flex; flex-direction: column; flex-shrink: 0; border-right: 1px solid #e5e7eb; }
         .main-wrapper { flex: 1; display: flex; justify-content: center; background: #f3f4f6; min-width: 0; }
         .main { width: calc(100vw * 0.42); display: flex; flex-direction: column; min-width: 0; background: #fff; border-left: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; }
         .header { height: 52px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; padding: 0 24px; flex-shrink: 0; background: #fff; }
@@ -23,15 +23,23 @@
         .bottom-bar { border-top: 1px solid #f3f4f6; padding: 10px 16px 12px; background: #fff; flex-shrink: 0; }
 
         /* ── 사이드바 ── */
-        .sidebar-logo { padding: 20px 16px 16px; display: flex; align-items: center; gap: 10px; }
-        .sidebar-logo-icon { width: 36px; height: 36px; background: #1a56db; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .sidebar-logo-text { font-size: 13px; font-weight: 700; line-height: 1.2; }
-        .sidebar-logo-sub { font-size: 10px; color: #9ca3af; margin-top: 2px; }
-        .sidebar-newchat { margin: 0 12px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #1a56db; background: rgba(26,86,219,0.08); border-left: 3px solid #1a56db; cursor: pointer; border-top: none; border-right: none; border-bottom: none; transition: background .15s; }
+        .sidebar-logo { padding: 24px 20px 28px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-logo-icon { width: 42px; height: 42px; background: #1a56db; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .sidebar-logo-text { font-size: 16px; font-weight: 700; line-height: 1.2; }
+        .sidebar-logo-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+        .sidebar-newchat { margin: 0 16px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-radius: 10px; font-size: 15px; font-weight: 600; color: #1a56db; background: rgba(26,86,219,0.08); border-left: 3px solid #1a56db; cursor: pointer; border-top: none; border-right: none; border-bottom: none; transition: background .15s; }
         .sidebar-newchat:hover { background: rgba(26,86,219,0.15); }
         .sidebar-bottom { padding: 16px; border-top: 1px solid #e5e7eb; }
         .sidebar-help { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; cursor: pointer; }
         .sidebar-help:hover { color: #374151; }
+        .sidebar-conversations { flex: 1; overflow-y: auto; padding: 8px 0; }
+        .conv-item { padding: 10px 16px; cursor: pointer; border-radius: 8px; margin: 2px 8px; font-size: 13px; color: #4b5563; transition: background .15s; display: flex; align-items: center; gap: 8px; }
+        .conv-item:hover { background: #f3f4f6; }
+        .conv-item.active { background: rgba(26,86,219,0.08); color: #1a56db; font-weight: 500; }
+        .conv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+        .conv-delete { display: none; width: 20px; height: 20px; border: none; background: transparent; cursor: pointer; color: #9ca3af; border-radius: 4px; flex-shrink: 0; align-items: center; justify-content: center; }
+        .conv-item:hover .conv-delete { display: flex; }
+        .conv-delete:hover { background: #fee2e2; color: #dc2626; }
 
         /* ── 채팅 ── */
         .msg-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
@@ -39,9 +47,9 @@
         .msg-ts { font-size: 11px; color: #9ca3af; margin-top: 4px; }
         .msg-ts.right { text-align: right; }
         .ai-avatar { width: 36px; height: 36px; border-radius: 50%; background: #1a56db; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .ai-bubble-dark { background: #fff; color: #374151; border: 1px solid #e5e7eb; padding: 14px 20px; border-radius: 18px; border-top-left-radius: 4px; font-size: 13px; line-height: 1.7; max-width: 560px; }
+        .ai-bubble-dark { background: #fff; color: #374151; border: 1px solid #e5e7eb; padding: 14px 20px; border-radius: 18px; border-top-left-radius: 4px; font-size: 14px; line-height: 1.7; max-width: 560px; }
         .ai-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; border-top-left-radius: 4px; padding: 20px; max-width: 600px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-        .user-bubble { background: #1a56db; color: #fff; padding: 12px 20px; border-radius: 18px; border-top-right-radius: 4px; font-size: 13px; line-height: 1.6; max-width: 480px; }
+        .user-bubble { background: #1a56db; color: #fff; padding: 12px 20px; border-radius: 18px; border-top-right-radius: 4px; font-size: 14px; line-height: 1.6; max-width: 480px; }
         .msg-wrapper { margin-bottom: 20px; }
 
         /* ── 하단 추천 카드 ── */
@@ -57,11 +65,13 @@
         .input-bar:focus-within { border-color: rgba(26,86,219,0.4); box-shadow: 0 0 0 3px rgba(26,86,219,0.1); }
         .input-plus { width: 36px; height: 36px; border-radius: 50%; background: #e5e7eb; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; transition: background .15s; flex-shrink: 0; }
         .input-plus:hover { background: #d1d5db; }
-        .input-field { flex: 1; border: none; background: transparent; outline: none; font-size: 13px; color: #374151; padding: 8px 4px; font-family: inherit; }
+        .input-field { flex: 1; border: none; background: transparent; outline: none; font-size: 15px; color: #374151; padding: 8px 4px; font-family: inherit; }
         .input-field::placeholder { color: #9ca3af; }
         .input-send { width: 40px; height: 40px; border-radius: 50%; background: #1a56db; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; flex-shrink: 0; }
         .input-send:hover { background: #1648b8; }
         .input-send:disabled { background: #d1d5db; cursor: not-allowed; }
+        .input-send.stop { background: #dc2626; }
+        .input-send.stop:hover { background: #b91c1c; }
         .disclaimer { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 8px; line-height: 1.5; }
 
         /* ── 용어 툴팁 ── */
@@ -85,13 +95,18 @@
         .welcome-btn { padding: 8px 18px; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 13px; color: #4b5563; cursor: pointer; transition: all .15s; font-family: inherit; }
         .welcome-btn:hover { border-color: rgba(26,86,219,0.4); color: #1a56db; background: rgba(26,86,219,0.06); }
 
+        /* 후속질문 칩 */
+        .followup-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+        .followup-chip { padding: 6px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 12px; color: #4b5563; cursor: pointer; transition: all .15s; font-family: inherit; }
+        .followup-chip:hover { border-color: rgba(26,86,219,0.4); color: #1a56db; background: rgba(26,86,219,0.06); }
+
         /* 응답 내부 */
         .resp-section { margin-bottom: 16px; }
-        .resp-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-        .resp-text { font-size: 13px; color: #4b5563; line-height: 1.7; }
+        .resp-label { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+        .resp-text { font-size: 14px; color: #4b5563; line-height: 1.7; }
         .insight-box { padding: 16px; background: rgba(26,86,219,0.06); border: 1px solid rgba(26,86,219,0.15); border-radius: 12px; }
-        .insight-label { font-size: 13px; font-weight: 600; color: #1a56db; margin-bottom: 4px; }
-        .insight-text { font-size: 13px; color: #1a56db; line-height: 1.7; }
+        .insight-label { font-size: 14px; font-weight: 600; color: #1a56db; margin-bottom: 4px; }
+        .insight-text { font-size: 14px; color: #1a56db; line-height: 1.7; }
         .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
         @media (max-width: 640px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
         .metric-chip { padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center; }
@@ -122,7 +137,7 @@
         <aside class="sidebar">
             <div class="sidebar-logo">
                 <div class="sidebar-logo-icon">
-                    <svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M12 2a1 1 0 011 1v2h3a3 3 0 013 3v10a3 3 0 01-3 3H8a3 3 0 01-3-3V8a3 3 0 013-3h3V3a1 1 0 011-1zM8 7a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1H8z"/><circle cx="9.5" cy="12" r="1.5"/><circle cx="14.5" cy="12" r="1.5"/><rect x="9" y="16" width="6" height="1.5" rx=".75"/><rect x="2" y="10" width="2" height="4" rx="1"/><rect x="20" y="10" width="2" height="4" rx="1"/></svg>
+                    <svg width="22" height="22" fill="#fff" viewBox="0 0 24 24"><path d="M12 2a1 1 0 011 1v2h3a3 3 0 013 3v10a3 3 0 01-3 3H8a3 3 0 01-3-3V8a3 3 0 013-3h3V3a1 1 0 011-1zM8 7a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1H8z"/><circle cx="9.5" cy="12" r="1.5"/><circle cx="14.5" cy="12" r="1.5"/><rect x="9" y="16" width="6" height="1.5" rx=".75"/><rect x="2" y="10" width="2" height="4" rx="1"/><rect x="20" y="10" width="2" height="4" rx="1"/></svg>
                 </div>
                 <div>
                     <div class="sidebar-logo-text">주식 멘토 AI</div>
@@ -133,7 +148,7 @@
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14m7-7H5"/></svg>
                 New Chat
             </button>
-            <div style="flex:1"></div>
+            <div id="conversationList" class="sidebar-conversations"></div>
             <div class="sidebar-bottom">
                 <div class="sidebar-help">
                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg>
@@ -194,7 +209,7 @@
                 <div class="input-bar">
                     <button class="input-plus"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14m7-7H5"/></svg></button>
                     <input id="questionInput" type="text" class="input-field" placeholder="종목 분석이나 투자 조언을 요청해보세요...">
-                    <button id="sendBtn" class="input-send" onclick="sendQuestion()"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg></button>
+                    <button id="sendBtn" class="input-send" onclick="handleSendClick()"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg></button>
                 </div>
                 <div class="disclaimer">주식 멘토 AI는 투자 결정을 돕기 위한 보조 도구입니다. 최종 결정은 투자자 본인에게 있습니다.</div>
             </div>
@@ -203,13 +218,111 @@
     </div>
 
     <script>
-        let isLoading = false, isComposing = false, glossaryHintShown = false;
+        let isLoading = false, isComposing = false, glossaryHintShown = false, abortController = null, currentLoadingId = null;
+        let currentThreadId = null;  // 현재 대화의 thread_id
+        const STORAGE_KEY = 'stockmentor_conversations';
+        const MAX_CONVERSATIONS = 50;
+        const SEND_ICON = `<svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg>`;
+        const STOP_ICON = `<svg width="16" height="16" fill="#fff" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+
+        // ── localStorage 헬퍼 ──
+        function loadStore() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { conversations: {}, activeId: null }; }
+            catch { return { conversations: {}, activeId: null }; }
+        }
+        function saveStore(store) { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
+
+        function createConversation(threadId) {
+            const store = loadStore();
+            const id = threadId || 'conv_' + Date.now();
+            store.conversations[id] = { id, title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+            store.activeId = id;
+            // 상한 초과 시 가장 오래된 대화 삭제
+            const ids = Object.keys(store.conversations);
+            if (ids.length > MAX_CONVERSATIONS) {
+                const oldest = ids.sort((a, b) => store.conversations[a].updatedAt - store.conversations[b].updatedAt)[0];
+                delete store.conversations[oldest];
+            }
+            saveStore(store);
+            return id;
+        }
+
+        function addMessageToStore(threadId, msg) {
+            const store = loadStore();
+            const conv = store.conversations[threadId];
+            if (!conv) return;
+            conv.messages.push(msg);
+            conv.updatedAt = Date.now();
+            if (!conv.title && msg.role === 'user') conv.title = msg.content.substring(0, 30);
+            saveStore(store);
+        }
+
+        function deleteConversation(id) {
+            const store = loadStore();
+            delete store.conversations[id];
+            if (store.activeId === id) store.activeId = null;
+            saveStore(store);
+            if (currentThreadId === id) { currentThreadId = null; newChat(); }
+            renderSidebar();
+        }
+
+        function renderSidebar() {
+            const store = loadStore();
+            const list = document.getElementById('conversationList');
+            const convs = Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt);
+            if (!convs.length) { list.innerHTML = ''; return; }
+            list.innerHTML = convs.map(c => {
+                const active = c.id === currentThreadId ? ' active' : '';
+                const title = c.title || '새 대화';
+                return `<div class="conv-item${active}" onclick="loadConversation('${c.id}')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg><span class="conv-title">${escapeHtml(title)}</span><button class="conv-delete" onclick="event.stopPropagation();deleteConversation('${c.id}')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div>`;
+            }).join('');
+        }
+
+        function resetLoadingUI() {
+            // 로딩 상태 초기화 (대화 전환 시 호출)
+            if (currentLoadingId) {
+                const el = document.getElementById(currentLoadingId);
+                if (el) el.remove();
+                currentLoadingId = null;
+            }
+            if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+            isLoading = false;
+            setButtonMode('send');
+        }
+
+        function loadConversation(id) {
+            const store = loadStore();
+            const conv = store.conversations[id];
+            if (!conv) return;
+            resetLoadingUI();
+            currentThreadId = id;
+            store.activeId = id;
+            saveStore(store);
+            // 채팅 영역 초기화
+            const container = document.getElementById('chatContainer');
+            container.innerHTML = '';
+            glossaryHintShown = false;
+            // 메시지 복원
+            conv.messages.forEach(msg => {
+                if (msg.role === 'user') addUserMessage(msg.content);
+                else if (msg.role === 'assistant' && msg.data) addBotResponse(msg.data, msg.route);
+            });
+            document.getElementById('suggestionChips').style.display = conv.messages.length ? 'flex' : 'none';
+            container.scrollTop = container.scrollHeight;
+            renderSidebar();
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const input = document.getElementById('questionInput');
             input.addEventListener('compositionstart', () => { isComposing = true; });
             input.addEventListener('compositionend', () => { isComposing = false; });
             input.addEventListener('keydown', e => { if (e.key === 'Enter' && !isComposing) sendQuestion(); });
+            // 페이지 로드 시 사이드바 렌더링 + 활성 대화 복원
+            const store = loadStore();
+            renderSidebar();
+            if (store.activeId && store.conversations[store.activeId]) {
+                loadConversation(store.activeId);
+            }
         });
 
         // ── 용어 사전 ──
@@ -316,27 +429,103 @@
         function ts(){ const d=new Date(),h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'); return `${h>=12?'오후':'오전'} ${h>12?h-12:h||12}:${m}`; }
 
         function newChat(){
+            resetLoadingUI();
+            currentThreadId = null;  // 새 대화이므로 thread_id 초기화
+            const store = loadStore();
+            store.activeId = null;
+            saveStore(store);
             document.getElementById('chatContainer').innerHTML = `<div id="welcomeSection"><div class="msg-wrapper"><div class="msg-row">${AI_AVATAR}<div class="ai-bubble-dark">안녕하세요! 주식 초보자를 위한 맞춤형 조언을 드리는 <strong>주식 멘토 AI</strong>입니다. 무엇을 도와드릴까요?</div></div><div class="msg-ts" style="margin-left:48px;">AI Assistant · Just now</div></div><div style="display:flex;flex-direction:column;align-items:center;margin-top:40px;"><div style="font-size:13px;color:#9ca3af;margin-bottom:16px;">아래 질문을 눌러보거나, 직접 입력해보세요</div><div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:520px;"><button class="welcome-btn" onclick="askQuestion('애플 시가총액 알려줘')">애플 시가총액</button><button class="welcome-btn" onclick="askQuestion('테슬라 오늘 뉴스')">테슬라 오늘 뉴스</button><button class="welcome-btn" onclick="askQuestion('PER이 뭐야?')">PER이란?</button><button class="welcome-btn" onclick="askQuestion('엔비디아 분석해줘')">엔비디아 분석</button><button class="welcome-btn" onclick="askQuestion('공매도 위험성 알려줘')">공매도 위험성</button><button class="welcome-btn" onclick="askQuestion('24살이고 연봉 3200인데 투자 전략 알려줘')">연봉 3200 투자 전략</button></div></div></div>`;
             document.getElementById('suggestionChips').style.display='none';
             glossaryHintShown=false;
+            renderSidebar();
         }
 
         function askQuestion(q){document.getElementById('questionInput').value=q;sendQuestion();}
+
+        function handleSendClick(){ if(isLoading) stopGeneration(); else sendQuestion(); }
+
+        function setButtonMode(mode){
+            const btn=document.getElementById('sendBtn');
+            if(mode==='stop'){ btn.innerHTML=STOP_ICON; btn.classList.add('stop'); btn.disabled=false; }
+            else { btn.innerHTML=SEND_ICON; btn.classList.remove('stop'); btn.disabled=false; }
+        }
+
+        function stopGeneration(){
+            if(abortController){ abortController.abort(); abortController=null; }
+            if(currentLoadingId){ removeMessage(currentLoadingId); currentLoadingId=null; }
+            isLoading=false; setButtonMode('send');
+        }
 
         async function sendQuestion(){
             const input=document.getElementById('questionInput');
             const q=input.value.trim(); if(!q||isLoading) return;
             const w=document.getElementById('welcomeSection');
             if(w){w.remove();document.getElementById('suggestionChips').style.display='flex';}
+
+            // 새 대화이면 conversation 생성
+            if (!currentThreadId) {
+                currentThreadId = createConversation();
+            }
+            // 요청 시점의 threadId를 캡처 (대화 전환 시에도 올바른 대화에 저장)
+            const reqThreadId = currentThreadId;
+
+            // 사용자 메시지 저장
+            addMessageToStore(reqThreadId, { role: 'user', content: q, timestamp: Date.now() });
+            renderSidebar();
+
             addUserMessage(q); input.value=''; input.focus();
-            isLoading=true; document.getElementById('sendBtn').disabled=true;
-            const lid=addLoadingMessage();
+            isLoading=true; setButtonMode('stop');
+            currentLoadingId=addLoadingMessage();
+            const reqLoadingId = currentLoadingId;
+            abortController=new AbortController();
             try {
-                const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
-                const j=await r.json(); removeMessage(lid);
-                if(j.success&&j.data) addBotResponse(j.data,j.route); else addErrorMessage(j.error||'응답을 생성할 수 없습니다.');
-            } catch(e){ removeMessage(lid); addErrorMessage('서버 연결에 실패했습니다.'); }
-            finally { isLoading=false; document.getElementById('sendBtn').disabled=false; }
+                const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q, thread_id:reqThreadId}),signal:abortController.signal});
+                const j=await r.json();
+                const stillOnSameChat = (currentThreadId === reqThreadId);
+
+                // 로딩 메시지 제거 (같은 대화에 있을 때만)
+                if (stillOnSameChat && reqLoadingId) {
+                    removeMessage(reqLoadingId);
+                    if (currentLoadingId === reqLoadingId) currentLoadingId = null;
+                }
+
+                if(j.success&&j.data){
+                    // thread_id 동기화
+                    const saveThreadId = j.thread_id || reqThreadId;
+                    if(j.thread_id && j.thread_id !== reqThreadId){
+                        const store = loadStore();
+                        const conv = store.conversations[reqThreadId];
+                        if(conv){
+                            delete store.conversations[reqThreadId];
+                            conv.id = saveThreadId;
+                            store.conversations[saveThreadId] = conv;
+                            if(store.activeId === reqThreadId) store.activeId = saveThreadId;
+                            saveStore(store);
+                        }
+                        if(stillOnSameChat) currentThreadId = saveThreadId;
+                    }
+                    // assistant 메시지 저장 (항상 — 어떤 대화에 있든)
+                    addMessageToStore(saveThreadId, { role: 'assistant', data: j.data, route: j.route, timestamp: Date.now() });
+                    renderSidebar();
+                    // DOM 업데이트는 같은 대화에 있을 때만
+                    if(stillOnSameChat) addBotResponse(j.data,j.route);
+                } else {
+                    if(stillOnSameChat) addErrorMessage(j.error||'응답을 생성할 수 없습니다.');
+                }
+            } catch(e){
+                if(e.name==='AbortError') return;
+                const stillOnSameChat = (currentThreadId === reqThreadId);
+                if(stillOnSameChat){
+                    if(reqLoadingId) removeMessage(reqLoadingId);
+                    currentLoadingId=null;
+                    addErrorMessage('서버 연결에 실패했습니다.');
+                }
+            } finally {
+                // 같은 대화에 있을 때만 로딩 상태 해제
+                if(currentThreadId === reqThreadId){
+                    isLoading=false; abortController=null; currentLoadingId=null; setButtonMode('send');
+                }
+            }
         }
 
         function addUserMessage(text){
@@ -352,7 +541,7 @@
         function addLoadingMessage(){
             const c=document.getElementById('chatContainer'), id='ld-'+Date.now(), d=document.createElement('div');
             d.id=id; d.className='msg-wrapper fade-in';
-            d.innerHTML=`<div class="msg-row">${AI_AVATAR}<div class="ai-card" style="padding:14px 20px;color:#6b7280;min-width:160px"><span id="loading-text">${LOADING_MESSAGES[0]}</span></div></div>`;
+            d.innerHTML=`<div class="msg-row">${AI_AVATAR}<div class="ai-card" style="padding:14px 20px;color:#6b7280;min-width:160px;font-size:13px"><span id="loading-text">${LOADING_MESSAGES[0]}</span></div></div>`;
             c.appendChild(d); c.scrollTop=c.scrollHeight;
             let idx=0;
             loadingInterval=setInterval(()=>{
@@ -391,7 +580,7 @@
 
             if(data.종목||data.가격){
                 h+=`<div class="resp-section">`;
-                if(data.종목) h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.종목.ticker)}</span><span style="color:#d1d5db">·</span><span style="color:#4b5563;font-size:14px">${esc(data.종목.company_name)}</span>${data.종목.sector?`<span style="font-size:11px;color:#9ca3af;margin-left:auto">${esc(data.종목.sector)}${data.종목.industry?' / '+esc(data.종목.industry):''}</span>`:''}</div>`;
+                if(data.종목) h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.종목.company_name)}</span><span style="font-size:13px;color:#6b7280">${esc(data.종목.ticker)}</span></div>`;
                 if(data.가격){
                     const up=data.가격.change>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
                     let pd='';
@@ -437,6 +626,9 @@
             if(data.출처&&data.출처.length){
                 const sl=data.출처.map(s=>{if(s.startsWith('http')){try{return `<a href="${esc(s)}" target="_blank" class="source-link">${esc(new URL(s).hostname.replace('www.',''))}</a>`}catch(e){}}return esc(s);});
                 h+=`<div class="source-bar"><div style="margin-bottom:4px">출처</div><div style="display:flex;flex-wrap:wrap;gap:8px">${sl.join('')}</div><div style="margin-top:4px">확신도: ${esc(data.확신도)}</div></div>`;
+            }
+            if(data.후속질문&&data.후속질문.length){
+                h+=`<div class="followup-chips">${data.후속질문.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
             }
             return highlightTerms(h);
         }
