@@ -3,523 +3,448 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>주식 도우미 AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>주식 멘토 AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .fade-in { animation: fadeIn 0.3s ease-in; }
-        #loading-text { display: inline-block; transition: opacity 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .chat-container { height: calc(100vh - 180px); }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #fff; overflow: hidden; height: 100vh; }
+        .fade-in { animation: fadeIn .3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        #loading-text { display: inline-block; transition: opacity .3s ease; }
+
+        /* ── 레이아웃 ── */
+        .app { display: flex; height: 100vh; }
+        .sidebar { width: 240px; background: #fff; color: #1f2937; display: flex; flex-direction: column; flex-shrink: 0; border-right: 1px solid #e5e7eb; }
+        .main-wrapper { flex: 1; display: flex; justify-content: center; background: #f3f4f6; min-width: 0; }
+        .main { width: calc(100vw * 0.42); display: flex; flex-direction: column; min-width: 0; background: #fff; border-left: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; }
+        .header { height: 52px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; padding: 0 24px; flex-shrink: 0; background: #fff; }
+        .chat-area { flex: 1; overflow-y: auto; padding: 20px 16px; background: #fff; }
+        .bottom-bar { border-top: 1px solid #f3f4f6; padding: 10px 16px 12px; background: #fff; flex-shrink: 0; }
+
+        /* ── 사이드바 ── */
+        .sidebar-logo { padding: 20px 16px 16px; display: flex; align-items: center; gap: 10px; }
+        .sidebar-logo-icon { width: 36px; height: 36px; background: #1a56db; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .sidebar-logo-text { font-size: 13px; font-weight: 700; line-height: 1.2; }
+        .sidebar-logo-sub { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+        .sidebar-newchat { margin: 0 12px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #1a56db; background: rgba(26,86,219,0.08); border-left: 3px solid #1a56db; cursor: pointer; border-top: none; border-right: none; border-bottom: none; transition: background .15s; }
+        .sidebar-newchat:hover { background: rgba(26,86,219,0.15); }
+        .sidebar-bottom { padding: 16px; border-top: 1px solid #e5e7eb; }
+        .sidebar-help { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; cursor: pointer; }
+        .sidebar-help:hover { color: #374151; }
+
+        /* ── 채팅 ── */
+        .msg-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+        .msg-row.user { justify-content: flex-end; }
+        .msg-ts { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .msg-ts.right { text-align: right; }
+        .ai-avatar { width: 36px; height: 36px; border-radius: 50%; background: #1a56db; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .ai-bubble-dark { background: #fff; color: #374151; border: 1px solid #e5e7eb; padding: 14px 20px; border-radius: 18px; border-top-left-radius: 4px; font-size: 13px; line-height: 1.7; max-width: 560px; }
+        .ai-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; border-top-left-radius: 4px; padding: 20px; max-width: 600px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .user-bubble { background: #1a56db; color: #fff; padding: 12px 20px; border-radius: 18px; border-top-right-radius: 4px; font-size: 13px; line-height: 1.6; max-width: 480px; }
+        .msg-wrapper { margin-bottom: 20px; }
+
+        /* ── 하단 추천 카드 ── */
+        .suggest-cards { display: flex; gap: 12px; margin-bottom: 12px; overflow-x: auto; }
+        .suggest-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; cursor: pointer; transition: all .15s; min-width: 170px; flex-shrink: 0; }
+        .suggest-card:hover { border-color: rgba(26,86,219,0.4); box-shadow: 0 2px 8px rgba(26,86,219,0.08); }
+        .suggest-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .suggest-title { font-size: 13px; font-weight: 600; color: #1f2937; }
+        .suggest-sub { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+
+        /* ── 입력 바 ── */
+        .input-bar { display: flex; align-items: center; gap: 8px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 999px; padding: 4px 4px 4px 6px; }
+        .input-bar:focus-within { border-color: rgba(26,86,219,0.4); box-shadow: 0 0 0 3px rgba(26,86,219,0.1); }
+        .input-plus { width: 36px; height: 36px; border-radius: 50%; background: #e5e7eb; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; transition: background .15s; flex-shrink: 0; }
+        .input-plus:hover { background: #d1d5db; }
+        .input-field { flex: 1; border: none; background: transparent; outline: none; font-size: 13px; color: #374151; padding: 8px 4px; font-family: inherit; }
+        .input-field::placeholder { color: #9ca3af; }
+        .input-send { width: 40px; height: 40px; border-radius: 50%; background: #1a56db; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; flex-shrink: 0; }
+        .input-send:hover { background: #1648b8; }
+        .input-send:disabled { background: #d1d5db; cursor: not-allowed; }
+        .disclaimer { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 8px; line-height: 1.5; }
+
+        /* ── 용어 툴팁 ── */
         .term-tooltip { border-bottom: 1px dashed currentColor; cursor: help; }
-        details > summary { list-style: none; }
-        details > summary::-webkit-details-marker { display: none; }
-        .details-arrow { display: inline-block; transition: transform 0.2s; }
-        details[open] .details-arrow { transform: rotate(90deg); }
-        .glossary-tip {
-            position: fixed; background: #1e293b; color: #e2e8f0;
-            padding: 8px 12px; border-radius: 8px; font-size: 11px;
-            line-height: 1.5; max-width: 240px; z-index: 1000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            pointer-events: none; animation: tipFade 0.15s ease;
-        }
+        .glossary-tip { position: fixed; background: #1e293b; color: #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 11px; line-height: 1.5; max-width: 240px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.15); pointer-events: none; animation: tipFade .15s ease; }
         @keyframes tipFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        details > summary { list-style: none; cursor: pointer; }
+        details > summary::-webkit-details-marker { display: none; }
+        .details-arrow { display: inline-block; transition: transform .2s; font-size: 11px; }
+        details[open] .details-arrow { transform: rotate(90deg); }
+
+        /* 프로필 */
+        .profile-circle { width: 32px; height: 32px; border-radius: 50%; background: #1a56db; display: flex; align-items: center; justify-content: center; }
+
+        /* 스크롤바 */
+        .chat-area::-webkit-scrollbar { width: 5px; }
+        .chat-area::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        .chat-area::-webkit-scrollbar-track { background: transparent; }
+
+        /* 환영 질문 버튼 */
+        .welcome-btn { padding: 8px 18px; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 13px; color: #4b5563; cursor: pointer; transition: all .15s; font-family: inherit; }
+        .welcome-btn:hover { border-color: rgba(26,86,219,0.4); color: #1a56db; background: rgba(26,86,219,0.06); }
+
+        /* 응답 내부 */
+        .resp-section { margin-bottom: 16px; }
+        .resp-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+        .resp-text { font-size: 13px; color: #4b5563; line-height: 1.7; }
+        .insight-box { padding: 16px; background: rgba(26,86,219,0.06); border: 1px solid rgba(26,86,219,0.15); border-radius: 12px; }
+        .insight-label { font-size: 13px; font-weight: 600; color: #1a56db; margin-bottom: 4px; }
+        .insight-text { font-size: 13px; color: #1a56db; line-height: 1.7; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        @media (max-width: 640px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
+        .metric-chip { padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center; }
+        .metric-name { font-size: 11px; color: #6b7280; }
+        .metric-value { font-size: 14px; font-weight: 700; color: #1f2937; margin-top: 2px; }
+        .metric-level { font-size: 11px; margin-top: 2px; display: inline-block; padding: 1px 6px; border-radius: 4px; }
+        .level-high { color: #dc2626; background: #fef2f2; }
+        .level-low { color: #1a56db; background: rgba(26,86,219,0.06); }
+        .level-normal { color: #4b5563; background: #f3f4f6; }
+        .news-card { padding: 12px; background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 8px; margin-bottom: 8px; }
+        .news-title { font-size: 13px; font-weight: 500; color: #1a56db; text-decoration: none; }
+        .news-title:hover { text-decoration: underline; }
+        .news-meta { font-size: 11px; color: #6b7280; margin-top: 4px; }
+        .news-summary { font-size: 11px; color: #4b5563; margin-top: 4px; }
+        .source-bar { padding-top: 12px; border-top: 1px solid #f3f4f6; font-size: 11px; color: #9ca3af; }
+        .source-link { color: #6b7280; text-decoration: underline; }
+        .source-link:hover { color: #1a56db; }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .chat-area, .bottom-bar { padding-left: 16px; padding-right: 16px; }
+        }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <!-- 상단 헤더 -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-4xl mx-auto flex items-center gap-3">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span class="text-white font-bold text-sm">AI</span>
-            </div>
-            <h1 class="text-xl font-bold text-gray-800">주식 도우미 AI</h1>
-            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">국내 · 해외 주식</span>
-        </div>
-    </header>
-
-    <!-- 면책문구 고정 배너 -->
-    <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
-        <span class="text-xs text-amber-700">본 내용은 투자 권유가 아닙니다. 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다.</span>
-    </div>
-
-    <!-- 메인 영역 -->
-    <main class="max-w-4xl mx-auto px-4 py-6">
-        <!-- 채팅 메시지 영역 -->
-        <div id="chatContainer" class="chat-container overflow-y-auto space-y-4 pb-24">
-            <!-- 초기 안내 메시지 -->
-            <div id="welcomeSection" class="text-center py-12">
-                <h2 class="text-2xl font-bold text-gray-700 mb-2">주식 초보자를 위한 AI 어시스턴트</h2>
-                <p class="text-gray-500 mb-8">국내 · 해외 주식에 대해 궁금한 것을 물어보세요</p>
-                <!-- 추천 질문 버튼 -->
-                <div class="flex flex-wrap justify-center gap-3" id="suggestions">
-                    <button onclick="askQuestion('애플 시가총액 알려줘')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">애플 시가총액</button>
-                    <button onclick="askQuestion('테슬라 오늘 뉴스')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">테슬라 오늘 뉴스</button>
-                    <button onclick="askQuestion('PER이 뭐야?')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">PER이란?</button>
-                    <button onclick="askQuestion('엔비디아 분석해줘')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">엔비디아 분석</button>
-                    <button onclick="askQuestion('삼성전자 시가총액')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">삼성전자 시총</button>
-                    <button onclick="askQuestion('공매도 위험성 알려줘')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">공매도 위험성</button>
-                    <button onclick="askQuestion('24살이고 연봉 3200인데 투자 전략 알려줘')" class="px-4 py-2 bg-white border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition">연봉 3200 투자 전략</button>
+<body>
+    <div class="app">
+        <!-- ══ 사이드바 ══ -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="sidebar-logo-icon">
+                    <svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M12 2a1 1 0 011 1v2h3a3 3 0 013 3v10a3 3 0 01-3 3H8a3 3 0 01-3-3V8a3 3 0 013-3h3V3a1 1 0 011-1zM8 7a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1H8z"/><circle cx="9.5" cy="12" r="1.5"/><circle cx="14.5" cy="12" r="1.5"/><rect x="9" y="16" width="6" height="1.5" rx=".75"/><rect x="2" y="10" width="2" height="4" rx="1"/><rect x="20" y="10" width="2" height="4" rx="1"/></svg>
+                </div>
+                <div>
+                    <div class="sidebar-logo-text">주식 멘토 AI</div>
+                    <div class="sidebar-logo-sub">Stock Mentor AI</div>
                 </div>
             </div>
-        </div>
+            <button class="sidebar-newchat" onclick="newChat()">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14m7-7H5"/></svg>
+                New Chat
+            </button>
+            <div style="flex:1"></div>
+            <div class="sidebar-bottom">
+                <div class="sidebar-help">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg>
+                    Help & Support
+                </div>
+            </div>
+        </aside>
 
-        <!-- 입력 영역 -->
-        <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4">
-            <div class="max-w-4xl mx-auto flex gap-3">
-                <input
-                    id="questionInput"
-                    type="text"
-                    placeholder="질문을 입력하세요 (예: 애플 PER 어때?)"
-                    class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                />
-                <button
-                    id="sendBtn"
-                    onclick="sendQuestion()"
-                    class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-medium text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                    전송
-                </button>
+        <!-- ══ 메인 ══ -->
+        <div class="main-wrapper">
+        <div class="main">
+            <header class="header">
+                <div style="flex:1"></div>
+                <div class="profile-circle">
+                    <svg width="16" height="16" fill="#fff" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                </div>
+            </header>
+
+            <div class="chat-area" id="chatContainer">
+                <div id="welcomeSection">
+                    <!-- AI 인사 -->
+                    <div class="msg-wrapper">
+                        <div class="msg-row">
+                            <div class="ai-avatar">
+                                <svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M12 2a1 1 0 011 1v2h3a3 3 0 013 3v10a3 3 0 01-3 3H8a3 3 0 01-3-3V8a3 3 0 013-3h3V3a1 1 0 011-1zM8 7a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1H8z"/><circle cx="9.5" cy="12" r="1.5"/><circle cx="14.5" cy="12" r="1.5"/><rect x="9" y="16" width="6" height="1.5" rx=".75"/><rect x="2" y="10" width="2" height="4" rx="1"/><rect x="20" y="10" width="2" height="4" rx="1"/></svg>
+                            </div>
+                            <div class="ai-bubble-dark">안녕하세요! 주식 초보자를 위한 맞춤형 조언을 드리는 <strong>주식 멘토 AI</strong>입니다. 무엇을 도와드릴까요?</div>
+                        </div>
+                        <div class="msg-ts" style="margin-left:48px;">AI Assistant · Just now</div>
+                    </div>
+                    <!-- 추천 질문 -->
+                    <div style="display:flex;flex-direction:column;align-items:center;margin-top:40px;">
+                        <div style="font-size:13px;color:#9ca3af;margin-bottom:16px;">아래 질문을 눌러보거나, 직접 입력해보세요</div>
+                        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:520px;">
+                            <button class="welcome-btn" onclick="askQuestion('애플 시가총액 알려줘')">애플 시가총액</button>
+                            <button class="welcome-btn" onclick="askQuestion('테슬라 오늘 뉴스')">테슬라 오늘 뉴스</button>
+                            <button class="welcome-btn" onclick="askQuestion('PER이 뭐야?')">PER이란?</button>
+                            <button class="welcome-btn" onclick="askQuestion('엔비디아 분석해줘')">엔비디아 분석</button>
+                            <button class="welcome-btn" onclick="askQuestion('공매도 위험성 알려줘')">공매도 위험성</button>
+                            <button class="welcome-btn" onclick="askQuestion('24살이고 연봉 3200인데 투자 전략 알려줘')">연봉 3200 투자 전략</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ 하단 ══ -->
+            <div class="bottom-bar">
+                <div id="suggestionChips" style="display:none;margin-bottom:10px;overflow-x:auto;">
+                    <div style="display:flex;gap:8px;padding-bottom:2px;justify-content:center;flex-wrap:wrap;">
+                        <button class="welcome-btn" onclick="askQuestion('애플 시가총액 알려줘')" style="white-space:nowrap;flex-shrink:0">애플 시총</button>
+                        <button class="welcome-btn" onclick="askQuestion('테슬라 오늘 뉴스')" style="white-space:nowrap;flex-shrink:0">테슬라 뉴스</button>
+                        <button class="welcome-btn" onclick="askQuestion('PER이 뭐야?')" style="white-space:nowrap;flex-shrink:0">PER이란?</button>
+                        <button class="welcome-btn" onclick="askQuestion('엔비디아 분석해줘')" style="white-space:nowrap;flex-shrink:0">엔비디아 분석</button>
+                        <button class="welcome-btn" onclick="askQuestion('공매도 위험성 알려줘')" style="white-space:nowrap;flex-shrink:0">공매도 위험성</button>
+                        <button class="welcome-btn" onclick="askQuestion('24살이고 연봉 3200인데 투자 전략 알려줘')" style="white-space:nowrap;flex-shrink:0">투자 전략</button>
+                    </div>
+                </div>
+                <div class="input-bar">
+                    <button class="input-plus"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14m7-7H5"/></svg></button>
+                    <input id="questionInput" type="text" class="input-field" placeholder="종목 분석이나 투자 조언을 요청해보세요...">
+                    <button id="sendBtn" class="input-send" onclick="sendQuestion()"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg></button>
+                </div>
+                <div class="disclaimer">주식 멘토 AI는 투자 결정을 돕기 위한 보조 도구입니다. 최종 결정은 투자자 본인에게 있습니다.</div>
             </div>
         </div>
-    </main>
+        </div>
+    </div>
 
     <script>
-        let isLoading = false;
-        let isComposing = false;  // 한글 IME 조합 상태
-        let glossaryHintShown = false;
+        let isLoading = false, isComposing = false, glossaryHintShown = false;
 
-        // 한글 IME 조합 감지
         document.addEventListener('DOMContentLoaded', () => {
             const input = document.getElementById('questionInput');
             input.addEventListener('compositionstart', () => { isComposing = true; });
             input.addEventListener('compositionend', () => { isComposing = false; });
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !isComposing) sendQuestion();
-            });
+            input.addEventListener('keydown', e => { if (e.key === 'Enter' && !isComposing) sendQuestion(); });
         });
 
-        // ── 용어 자동 하이라이트 + 호버 설명 ──
-        const GLOSSARY = {
-            '포워드 PER': '미래 예상 이익 기준 PER. 현재보다 미래 가치 반영',
-            '배당수익률': '주가 대비 연간 배당금 비율 (은행 이자 같은 개념)',
-            '매출총이익률': '매출에서 원가를 뺀 이익의 비율. 제품 수익성 지표',
-            '영업이익률': '매출 대비 영업이익 비율. 사업 운영 효율성 지표',
-            '서킷브레이커': '주가 급락 시 거래를 일시 중단하는 시장 안전장치',
-            '이동평균선': '일정 기간 주가 평균을 이은 선. 추세 파악에 사용',
-            '인덱스펀드': '특정 지수(S&P 500 등)를 그대로 따라가는 펀드',
-            '시간외거래': '정규 거래 시간 외에 이뤄지는 주식 거래',
-            '자사주매입': '회사가 자기 주식을 시장에서 매입. 주가 방어 효과',
-            '배당성향': '순이익 중 배당 지급 비율. 높을수록 주주환원 적극적',
-            '액면분할': '주식을 쪼개 수를 늘리는 것. 총 가치는 동일',
-            '시가총액': '회사의 총 가치 = 현재 주가 × 발행 주식 수',
-            '분산투자': '여러 자산에 나눠 투자해 위험을 줄이는 전략',
-            '실적발표': '기업이 분기/연간 매출과 이익을 공개하는 것',
-            '포트폴리오': '보유 자산(주식, 채권 등)의 조합',
-            '공매도': '주식을 빌려 먼저 팔고, 나중에 싸게 사서 갚는 방법',
-            '강세장': '주가가 지속 상승하는 시장 (Bull Market)',
-            '약세장': '주가가 지속 하락하는 시장 (Bear Market)',
-            '상한가': '하루 주가 최대 상승폭 (한국: +30%)',
-            '하한가': '하루 주가 최대 하락폭 (한국: -30%)',
-            '마진콜': '빚투 시 손실이 커지면 증거금 추가 납부 요구',
-            '시장가': '현재 가격으로 즉시 체결되는 주문 방식',
-            '지정가': '원하는 가격을 지정해 기다리는 주문 방식',
-            '대형주': '시가총액이 큰 주식 (보통 100억 달러 이상)',
-            '중형주': '시가총액 중간 규모 주식 (20억~100억 달러)',
-            '소형주': '시가총액이 작은 주식 (20억 달러 미만)',
-            '배당': '회사가 이익 일부를 주주에게 나눠주는 것',
-            '베타': '시장 대비 변동성 지표. 1 초과면 시장보다 변동 큼',
-            '시총': '시가총액의 줄임말 = 현재 주가 × 발행 주식 수',
-            'PER': '주가÷주당순이익. 이익 대비 주가 수준 판단 지표',
-            'PBR': '주가÷주당순자산. 자산 대비 주가 수준 판단 지표',
-            'EPS': '주당순이익. 순이익을 발행주식수로 나눈 값',
-            'ROE': '자기자본이익률. 투자 자본 대비 수익성 지표',
-            'RSI': '상대강도지수(0~100). 과매수·과매도 판단 지표',
-            'ETF': '여러 주식을 묶은 펀드. 주식처럼 거래소에서 매매 가능',
-            'PEG': 'PER÷이익성장률. 성장성을 고려한 밸류에이션 지표',
-        };
-        const GLOSSARY_TERMS = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);
+        // ── 용어 사전 ──
+        const GLOSSARY_DATA = [
+            { terms: ['포워드 PER','Forward PER','Forward P/E','선행 PER'], tip: '미래 예상 이익 기준 PER. 현재보다 미래 가치 반영' },
+            { terms: ['배당수익률','배당률','Dividend Yield'], tip: '주가 대비 연간 배당금 비율 (은행 이자 같은 개념)' },
+            { terms: ['매출총이익률','Gross Margin','매출총이익마진'], tip: '매출에서 원가를 뺀 이익의 비율. 제품 수익성 지표' },
+            { terms: ['영업이익률','Operating Margin','영업마진'], tip: '매출 대비 영업이익 비율. 사업 운영 효율성 지표' },
+            { terms: ['순이익률','Net Margin','Profit Margin','순마진'], tip: '매출 대비 순이익 비율. 최종 수익성 지표' },
+            { terms: ['서킷브레이커','Circuit Breaker'], tip: '주가 급락 시 거래를 일시 중단하는 시장 안전장치' },
+            { terms: ['이동평균선','이동평균','이평선'], tip: '일정 기간 주가 평균을 이은 선. 추세 파악에 사용' },
+            { terms: ['인덱스펀드','인덱스 펀드','Index Fund'], tip: '특정 지수(S&P 500 등)를 그대로 따라가는 펀드' },
+            { terms: ['시간외거래','시간 외 거래','프리마켓','애프터마켓'], tip: '정규 거래 시간 외에 이뤄지는 주식 거래' },
+            { terms: ['자사주매입','자사주 매입','Buyback'], tip: '회사가 자기 주식을 시장에서 매입. 주가 방어 효과' },
+            { terms: ['배당성향','Payout Ratio'], tip: '순이익 중 배당 지급 비율. 높을수록 주주환원 적극적' },
+            { terms: ['액면분할','주식분할','Stock Split'], tip: '주식을 쪼개 수를 늘리는 것. 총 가치는 동일' },
+            { terms: ['시가총액','시총','Market Cap','Market Capitalization'], tip: '회사의 총 가치 = 현재 주가 × 발행 주식 수' },
+            { terms: ['분산투자','분산 투자','Diversification'], tip: '여러 자산에 나눠 투자해 위험을 줄이는 전략' },
+            { terms: ['실적발표','실적 발표','어닝시즌','Earnings'], tip: '기업이 분기/연간 매출과 이익을 공개하는 것' },
+            { terms: ['포트폴리오','Portfolio'], tip: '보유 자산(주식, 채권 등)의 조합' },
+            { terms: ['공매도','Short Selling','숏셀링'], tip: '주식을 빌려 먼저 팔고, 나중에 싸게 사서 갚는 방법' },
+            { terms: ['강세장','Bull Market','불마켓','상승장'], tip: '주가가 지속 상승하는 시장 (Bull Market)' },
+            { terms: ['약세장','Bear Market','베어마켓','하락장'], tip: '주가가 지속 하락하는 시장 (Bear Market)' },
+            { terms: ['상한가'], tip: '하루 주가 최대 상승폭 (한국: +30%)' },
+            { terms: ['하한가'], tip: '하루 주가 최대 하락폭 (한국: -30%)' },
+            { terms: ['마진콜','Margin Call'], tip: '빚투 시 손실이 커지면 증거금 추가 납부 요구' },
+            { terms: ['시장가','시장가 주문'], tip: '현재 가격으로 즉시 체결되는 주문 방식' },
+            { terms: ['지정가','지정가 주문'], tip: '원하는 가격을 지정해 기다리는 주문 방식' },
+            { terms: ['대형주','Large Cap'], tip: '시가총액이 큰 주식 (보통 100억 달러 이상)' },
+            { terms: ['중형주','Mid Cap'], tip: '시가총액 중간 규모 주식 (20억~100억 달러)' },
+            { terms: ['소형주','Small Cap'], tip: '시가총액이 작은 주식 (20억 달러 미만)' },
+            { terms: ['배당','Dividend','배당금'], tip: '회사가 이익 일부를 주주에게 나눠주는 것' },
+            { terms: ['베타','Beta'], tip: '시장 대비 변동성 지표. 1 초과면 시장보다 변동 큼' },
+            { terms: ['밸류에이션','Valuation','기업가치평가'], tip: '기업의 적정 가치를 평가하는 것. PER·PBR 등 활용' },
+            { terms: ['변동성','Volatility','볼라틸리티'], tip: '가격이 얼마나 크게 움직이는지의 정도' },
+            { terms: ['유동성','Liquidity'], tip: '자산을 쉽고 빠르게 현금화할 수 있는 정도' },
+            { terms: ['레버리지','Leverage','차입투자'], tip: '빌린 돈으로 투자 규모를 키우는 것. 수익·손실 모두 확대' },
+            { terms: ['매출 성장률','매출성장률','Revenue Growth'], tip: '전년 대비 매출 증가 비율. 기업 성장세 판단 지표' },
+            { terms: ['영업이익','Operating Income','Operating Profit'], tip: '매출에서 영업비용을 뺀 이익. 본업 수익성 지표' },
+            { terms: ['순이익','Net Income','Net Profit'], tip: '모든 비용과 세금을 빼고 남은 최종 이익' },
+            { terms: ['매출','Revenue','매출액'], tip: '기업이 제품·서비스를 팔아 번 총금액' },
+            { terms: ['전일 종가','전일종가','Previous Close'], tip: '전날 장 마감 시 마지막 거래 가격' },
+            { terms: ['거래량','Volume','거래대금'], tip: '일정 기간 거래된 주식 수. 시장 관심도 지표' },
+            { terms: ['PER','P/E','주가수익비율','주가수익률','Price-to-Earnings'], tip: '주가÷주당순이익. 이익 대비 주가 수준 판단 지표' },
+            { terms: ['PBR','P/B','주가순자산비율','Price-to-Book'], tip: '주가÷주당순자산. 자산 대비 주가 수준 판단 지표' },
+            { terms: ['EPS','주당순이익','Earnings Per Share'], tip: '주당순이익. 순이익을 발행주식수로 나눈 값' },
+            { terms: ['ROE','자기자본이익률','Return on Equity'], tip: '자기자본이익률. 투자 자본 대비 수익성 지표' },
+            { terms: ['RSI','상대강도지수'], tip: '상대강도지수(0~100). 과매수·과매도 판단 지표' },
+            { terms: ['ETF','상장지수펀드'], tip: '여러 주식을 묶은 펀드. 주식처럼 거래소에서 매매 가능' },
+            { terms: ['PEG','PEG Ratio'], tip: 'PER÷이익성장률. 성장성을 고려한 밸류에이션 지표' },
+            { terms: ['YoY','전년 대비','전년대비'], tip: 'Year over Year. 전년 같은 기간 대비 비교' },
+            { terms: ['QoQ','전분기 대비','전분기대비'], tip: 'Quarter over Quarter. 직전 분기 대비 비교' },
+        ];
+        const GLOSSARY={}, GLOSSARY_GROUP={};
+        GLOSSARY_DATA.forEach((e,i)=>e.terms.forEach(t=>{GLOSSARY[t]=e.tip;GLOSSARY_GROUP[t]=i;}));
+        const GLOSSARY_TERMS = Object.keys(GLOSSARY).sort((a,b)=>b.length-a.length);
 
         function highlightTerms(html) {
-            const highlighted = new Set();
+            const done = new Set();
             const parts = html.split(/(<[^>]+>)/);
-            const isAlnum = c => /[a-zA-Z0-9]/.test(c);
-            return parts.map(part => {
-                if (part.startsWith('<') || !part.trim()) return part;
-                let result = '';
-                let i = 0;
-                while (i < part.length) {
-                    let found = false;
-                    for (const term of GLOSSARY_TERMS) {
-                        if (highlighted.has(term)) continue;
-                        const len = term.length;
-                        if (i + len > part.length) continue;
-                        const substr = part.substring(i, i + len);
-                        if (substr.toLowerCase() !== term.toLowerCase()) continue;
-                        // 영문 용어: 단어 경계 체크 (SUPER 안의 PER 등 오탐 방지)
-                        if (/^[a-zA-Z]/.test(term)) {
-                            const before = i > 0 ? part[i - 1] : '';
-                            const after = i + len < part.length ? part[i + len] : '';
-                            if (isAlnum(before) || isAlnum(after)) continue;
+            const isAn = c=>/[a-zA-Z0-9]/.test(c);
+            return parts.map(p=>{
+                if(p.startsWith('<')||!p.trim()) return p;
+                let r='',i=0;
+                while(i<p.length){
+                    let f=false;
+                    for(const t of GLOSSARY_TERMS){
+                        const g=GLOSSARY_GROUP[t]; if(done.has(g)) continue;
+                        const l=t.length; if(i+l>p.length) continue;
+                        if(p.substring(i,i+l).toLowerCase()!==t.toLowerCase()) continue;
+                        if(/^[a-zA-Z]/.test(t)){
+                            const b=i>0?p[i-1]:'', a=i+l<p.length?p[i+l]:'';
+                            if(isAn(b)||isAn(a)) continue;
                         }
-                        result += `<span class="term-tooltip" data-tooltip="${escapeHtml(GLOSSARY[term])}">${substr}</span>`;
-                        highlighted.add(term);
-                        i += len;
-                        found = true;
-                        break;
+                        r+=`<span class="term-tooltip" data-tooltip="${escapeHtml(GLOSSARY[t])}">${p.substring(i,i+l)}</span>`;
+                        done.add(g); i+=l; f=true; break;
                     }
-                    if (!found) { result += part[i]; i++; }
+                    if(!f){r+=p[i];i++;}
                 }
-                return result;
+                return r;
             }).join('');
         }
 
-        // 툴팁 표시/숨김
-        let activeTooltip = null, activeTooltipTarget = null;
-
-        function showTooltip(el) {
-            if (activeTooltipTarget === el) return;
-            hideTooltip();
-            const rect = el.getBoundingClientRect();
-            const tip = document.createElement('div');
-            tip.className = 'glossary-tip';
-            tip.textContent = el.dataset.tooltip;
+        let activeTooltip=null, activeTooltipTarget=null;
+        function showTooltip(el){
+            if(activeTooltipTarget===el)return; hideTooltip();
+            const rect=el.getBoundingClientRect();
+            const tip=document.createElement('div'); tip.className='glossary-tip'; tip.textContent=el.dataset.tooltip;
             document.body.appendChild(tip);
-            const tipRect = tip.getBoundingClientRect();
-            let left = rect.left + rect.width / 2 - tipRect.width / 2;
-            let top = rect.top - tipRect.height - 8;
-            left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
-            if (top < 4) top = rect.bottom + 8;
-            tip.style.left = left + 'px';
-            tip.style.top = top + 'px';
-            activeTooltip = tip;
-            activeTooltipTarget = el;
+            const tr=tip.getBoundingClientRect();
+            let left=rect.left+rect.width/2-tr.width/2, top=rect.top-tr.height-8;
+            left=Math.max(8,Math.min(left,window.innerWidth-tr.width-8));
+            if(top<4) top=rect.bottom+8;
+            tip.style.left=left+'px'; tip.style.top=top+'px';
+            activeTooltip=tip; activeTooltipTarget=el;
+        }
+        function hideTooltip(){if(activeTooltip){activeTooltip.remove();activeTooltip=null;activeTooltipTarget=null;}}
+        document.addEventListener('mouseover',e=>{const t=e.target.closest('.term-tooltip');if(t)showTooltip(t);else hideTooltip();});
+        document.addEventListener('click',e=>{const t=e.target.closest('.term-tooltip');if(t)showTooltip(t);else hideTooltip();});
+        document.getElementById('chatContainer').addEventListener('scroll',hideTooltip);
+
+        const AI_AVATAR = `<div class="ai-avatar"><svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M12 2a1 1 0 011 1v2h3a3 3 0 013 3v10a3 3 0 01-3 3H8a3 3 0 01-3-3V8a3 3 0 013-3h3V3a1 1 0 011-1zM8 7a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V8a1 1 0 00-1-1H8z"/><circle cx="9.5" cy="12" r="1.5"/><circle cx="14.5" cy="12" r="1.5"/><rect x="9" y="16" width="6" height="1.5" rx=".75"/><rect x="2" y="10" width="2" height="4" rx="1"/><rect x="20" y="10" width="2" height="4" rx="1"/></svg></div>`;
+
+        function ts(){ const d=new Date(),h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'); return `${h>=12?'오후':'오전'} ${h>12?h-12:h||12}:${m}`; }
+
+        function newChat(){
+            document.getElementById('chatContainer').innerHTML = `<div id="welcomeSection"><div class="msg-wrapper"><div class="msg-row">${AI_AVATAR}<div class="ai-bubble-dark">안녕하세요! 주식 초보자를 위한 맞춤형 조언을 드리는 <strong>주식 멘토 AI</strong>입니다. 무엇을 도와드릴까요?</div></div><div class="msg-ts" style="margin-left:48px;">AI Assistant · Just now</div></div><div style="display:flex;flex-direction:column;align-items:center;margin-top:40px;"><div style="font-size:13px;color:#9ca3af;margin-bottom:16px;">아래 질문을 눌러보거나, 직접 입력해보세요</div><div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:520px;"><button class="welcome-btn" onclick="askQuestion('애플 시가총액 알려줘')">애플 시가총액</button><button class="welcome-btn" onclick="askQuestion('테슬라 오늘 뉴스')">테슬라 오늘 뉴스</button><button class="welcome-btn" onclick="askQuestion('PER이 뭐야?')">PER이란?</button><button class="welcome-btn" onclick="askQuestion('엔비디아 분석해줘')">엔비디아 분석</button><button class="welcome-btn" onclick="askQuestion('공매도 위험성 알려줘')">공매도 위험성</button><button class="welcome-btn" onclick="askQuestion('24살이고 연봉 3200인데 투자 전략 알려줘')">연봉 3200 투자 전략</button></div></div></div>`;
+            document.getElementById('suggestionChips').style.display='none';
+            glossaryHintShown=false;
         }
 
-        function hideTooltip() {
-            if (activeTooltip) { activeTooltip.remove(); activeTooltip = null; activeTooltipTarget = null; }
-        }
+        function askQuestion(q){document.getElementById('questionInput').value=q;sendQuestion();}
 
-        document.addEventListener('mouseover', (e) => {
-            const term = e.target.closest('.term-tooltip');
-            if (term) showTooltip(term);
-            else hideTooltip();
-        });
-        document.addEventListener('click', (e) => {
-            const term = e.target.closest('.term-tooltip');
-            if (term) showTooltip(term);
-            else hideTooltip();
-        });
-        document.getElementById('chatContainer').addEventListener('scroll', hideTooltip);
-
-        function askQuestion(question) {
-            document.getElementById('questionInput').value = question;
-            sendQuestion();
-        }
-
-        async function sendQuestion() {
-            const input = document.getElementById('questionInput');
-            const question = input.value.trim();
-            if (!question || isLoading) return;
-
-            // 환영 섹션 숨기기
-            const welcome = document.getElementById('welcomeSection');
-            if (welcome) welcome.remove();
-
-            // 사용자 메시지 표시
-            addUserMessage(question);
-            input.value = '';
-            input.blur();
-            input.focus();
-            isLoading = true;
-            document.getElementById('sendBtn').disabled = true;
-
-            // 로딩 표시
-            const loadingId = addLoadingMessage();
-
+        async function sendQuestion(){
+            const input=document.getElementById('questionInput');
+            const q=input.value.trim(); if(!q||isLoading) return;
+            const w=document.getElementById('welcomeSection');
+            if(w){w.remove();document.getElementById('suggestionChips').style.display='flex';}
+            addUserMessage(q); input.value=''; input.focus();
+            isLoading=true; document.getElementById('sendBtn').disabled=true;
+            const lid=addLoadingMessage();
             try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question }),
-                });
-                const result = await response.json();
-                removeMessage(loadingId);
-
-                if (result.success && result.data) {
-                    addBotResponse(result.data, result.route);
-                } else {
-                    addErrorMessage(result.error || '응답을 생성할 수 없습니다.');
-                }
-            } catch (error) {
-                removeMessage(loadingId);
-                addErrorMessage('서버 연결에 실패했습니다.');
-            } finally {
-                isLoading = false;
-                document.getElementById('sendBtn').disabled = false;
-            }
+                const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+                const j=await r.json(); removeMessage(lid);
+                if(j.success&&j.data) addBotResponse(j.data,j.route); else addErrorMessage(j.error||'응답을 생성할 수 없습니다.');
+            } catch(e){ removeMessage(lid); addErrorMessage('서버 연결에 실패했습니다.'); }
+            finally { isLoading=false; document.getElementById('sendBtn').disabled=false; }
         }
 
-        function addUserMessage(text) {
-            const container = document.getElementById('chatContainer');
-            const div = document.createElement('div');
-            div.className = 'flex justify-end fade-in';
-            div.innerHTML = `<div class="bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-md max-w-md text-sm">${escapeHtml(text)}</div>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
+        function addUserMessage(text){
+            const c=document.getElementById('chatContainer'), d=document.createElement('div');
+            d.className='msg-wrapper fade-in';
+            d.innerHTML=`<div class="msg-row user"><div class="user-bubble">${escapeHtml(text)}</div></div><div class="msg-ts right">You · ${ts()}</div>`;
+            c.appendChild(d); c.scrollTop=c.scrollHeight;
         }
 
-        const AI_ICON = `<div class="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mr-3 mt-1">
-            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="3" y="8" width="18" height="12" rx="3" ry="3"/><circle cx="9" cy="14" r="1.5" fill="#3b82f6"/><circle cx="15" cy="14" r="1.5" fill="#3b82f6"/><rect x="10" y="4" width="4" height="4" rx="1"/><line x1="12" y1="2" x2="12" y2="4" stroke="white" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="1.5" r="1" fill="white"/>
-            </svg>
-        </div>`;
+        const LOADING_MESSAGES=['질문 분석 중...','데이터 조회 중...','최신 정보 확인 중...','답변 정리 중...'];
+        let loadingInterval=null;
 
-        const LOADING_MESSAGES = ['🤔 질문 분석 중...', '📊 데이터 조회 중...', '📰 최신 정보 확인 중...', '✍️ 답변 정리 중...'];
-        let loadingInterval = null;
-
-        function addLoadingMessage() {
-            const container = document.getElementById('chatContainer');
-            const id = 'loading-' + Date.now();
-            const div = document.createElement('div');
-            div.id = id;
-            div.className = 'flex justify-start items-start fade-in';
-            div.innerHTML = `${AI_ICON}<div class="bg-gray-200 text-gray-600 px-4 py-2 rounded-2xl rounded-bl-md text-sm"><span id="loading-text">${LOADING_MESSAGES[0]}</span></div>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-
-            let idx = 0;
-            loadingInterval = setInterval(() => {
-                idx = (idx + 1) % LOADING_MESSAGES.length;
-                const span = document.getElementById('loading-text');
-                if (!span) return;
-                span.style.opacity = '0';
-                setTimeout(() => { span.textContent = LOADING_MESSAGES[idx]; span.style.opacity = '1'; }, 300);
-            }, 1500);
-
+        function addLoadingMessage(){
+            const c=document.getElementById('chatContainer'), id='ld-'+Date.now(), d=document.createElement('div');
+            d.id=id; d.className='msg-wrapper fade-in';
+            d.innerHTML=`<div class="msg-row">${AI_AVATAR}<div class="ai-card" style="padding:14px 20px;color:#6b7280;min-width:160px"><span id="loading-text">${LOADING_MESSAGES[0]}</span></div></div>`;
+            c.appendChild(d); c.scrollTop=c.scrollHeight;
+            let idx=0;
+            loadingInterval=setInterval(()=>{
+                idx=(idx+1)%LOADING_MESSAGES.length;
+                const s=document.getElementById('loading-text'); if(!s)return;
+                s.style.opacity='0'; setTimeout(()=>{s.textContent=LOADING_MESSAGES[idx];s.style.opacity='1';},300);
+            },1500);
             return id;
         }
 
-        function removeMessage(id) {
-            if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
-            const el = document.getElementById(id);
-            if (el) el.remove();
+        function removeMessage(id){ if(loadingInterval){clearInterval(loadingInterval);loadingInterval=null;} const e=document.getElementById(id); if(e)e.remove(); }
+
+        function addErrorMessage(text){
+            const c=document.getElementById('chatContainer'), d=document.createElement('div');
+            d.className='msg-wrapper fade-in';
+            d.innerHTML=`<div class="msg-row">${AI_AVATAR}<div><div style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:14px 20px;border-radius:18px;border-top-left-radius:4px;font-size:13px;">${escapeHtml(text)}</div><div class="msg-ts" style="margin-top:4px">AI Assistant · ${ts()}</div></div></div>`;
+            c.appendChild(d); c.scrollTop=c.scrollHeight;
         }
 
-        function addErrorMessage(text) {
-            const container = document.getElementById('chatContainer');
-            const div = document.createElement('div');
-            div.className = 'flex justify-start items-start fade-in';
-            div.innerHTML = `${AI_ICON}<div class="bg-red-50 text-red-700 px-4 py-2 rounded-2xl rounded-bl-md text-sm border border-red-200">${escapeHtml(text)}</div>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function addBotResponse(data, route) {
-            const container = document.getElementById('chatContainer');
-            const div = document.createElement('div');
-            div.className = 'flex justify-start items-start fade-in w-full';
-            const responseHtml = renderResponse(data, route);
-            let hintHtml = '';
-            if (!glossaryHintShown && responseHtml.includes('term-tooltip')) {
-                hintHtml = `<div class="mb-3 flex items-center gap-1.5 text-xs text-gray-400"><svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</span></div>`;
-                glossaryHintShown = true;
+        function addBotResponse(data,route){
+            const c=document.getElementById('chatContainer'), d=document.createElement('div');
+            d.className='msg-wrapper fade-in';
+            const rhtml=renderResponse(data,route);
+            let hint='';
+            if(!glossaryHintShown&&rhtml.includes('term-tooltip')){
+                hint=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`;
+                glossaryHintShown=true;
             }
-            div.innerHTML = `${AI_ICON}<div class="bg-white border border-gray-200 rounded-2xl rounded-bl-md p-5 max-w-2xl w-full shadow-sm">${hintHtml}${responseHtml}</div>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
+            d.innerHTML=`<div class="msg-row">${AI_AVATAR}<div style="flex:1;min-width:0"><div class="ai-card">${hint}${rhtml}</div><div class="msg-ts" style="margin-top:4px">AI Assistant · ${ts()}</div></div></div>`;
+            c.appendChild(d); c.scrollTop=c.scrollHeight;
         }
 
-        function renderResponse(data, route) {
-            let html = '';
+        function renderResponse(data,route){
+            let h='';
+            if(route==='company'&&data.가격) h+=`<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
 
-            // 주가 데이터 지연 안내
-            if (route === 'company' && data.가격) {
-                html += `<div class="mb-3 text-xs text-gray-400">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
-            }
-
-            // ── 통합 헤더: 종목 + 가격 + 시총 + 52주 ──
-            if (data.종목 || data.가격) {
-                html += `<div class="mb-4">`;
-
-                if (data.종목) {
-                    html += `<div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-bold text-lg text-gray-800">${escapeHtml(data.종목.ticker)}</span>
-                        <span class="text-gray-400">·</span>
-                        <span class="text-gray-600">${escapeHtml(data.종목.company_name)}</span>
-                        ${data.종목.sector ? `<span class="text-xs text-gray-400 ml-auto">${escapeHtml(data.종목.sector)}${data.종목.industry ? ' / ' + escapeHtml(data.종목.industry) : ''}</span>` : ''}
-                    </div>`;
+            if(data.종목||data.가격){
+                h+=`<div class="resp-section">`;
+                if(data.종목) h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.종목.ticker)}</span><span style="color:#d1d5db">·</span><span style="color:#4b5563;font-size:14px">${esc(data.종목.company_name)}</span>${data.종목.sector?`<span style="font-size:11px;color:#9ca3af;margin-left:auto">${esc(data.종목.sector)}${data.종목.industry?' / '+esc(data.종목.industry):''}</span>`:''}</div>`;
+                if(data.가격){
+                    const up=data.가격.change>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
+                    let pd='';
+                    if(data.가격.currency==='KRW') pd=`${Math.round(data.가격.current_price).toLocaleString()}원`;
+                    else if(data.가격.krw_price) pd=`${Math.round(data.가격.krw_price).toLocaleString()}원 <span style="font-size:14px;color:#6b7280">($${data.가격.current_price.toLocaleString()})</span>`;
+                    else pd=`$${data.가격.current_price.toLocaleString()}`;
+                    h+=`<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:700;color:#1f2937">${pd}</span><span style="color:${clr};font-weight:600;font-size:14px">${arr} ${Math.abs(data.가격.change_percent).toFixed(2)}%</span></div>`;
+                    const ip=[];
+                    if(data.가격.market_cap){let c=`시총 <span style="font-weight:500">${esc(data.가격.market_cap)}</span>`;if(data.가격.market_cap_tier)c+=` <span style="padding:1px 6px;background:#f3f4f6;border-radius:4px;font-size:11px">${esc(data.가격.market_cap_tier)}</span>`;ip.push(c);}
+                    if(data.범위_52주) ip.push(`52주 $${data.범위_52주.low_52w.toLocaleString()} ~ $${data.범위_52주.high_52w.toLocaleString()}`);
+                    if(ip.length) h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:11px;color:#6b7280">${ip.join(' <span style="color:#d1d5db">|</span> ')}</div>`;
+                    if(data.가격.usd_krw_rate) h+=`<div style="font-size:11px;color:#9ca3af;margin-top:2px">적용 환율: ${data.가격.usd_krw_rate.toLocaleString()}원/$</div>`;
                 }
-
-                if (data.가격) {
-                    const isUp = data.가격.change >= 0;
-                    const color = isUp ? 'text-green-600' : 'text-red-600';
-                    const arrow = isUp ? '▲' : '▼';
-
-                    let priceDisplay = '';
-                    if (data.가격.currency === 'KRW') {
-                        priceDisplay = `${Math.round(data.가격.current_price).toLocaleString()}원`;
-                    } else if (data.가격.krw_price) {
-                        priceDisplay = `${Math.round(data.가격.krw_price).toLocaleString()}원 <span class="text-sm text-gray-500">($${data.가격.current_price.toLocaleString()})</span>`;
-                    } else {
-                        priceDisplay = `$${data.가격.current_price.toLocaleString()}`;
-                    }
-
-                    html += `<div class="flex items-baseline gap-2 mt-1.5 flex-wrap">
-                        <span class="text-2xl font-bold text-gray-800">${priceDisplay}</span>
-                        <span class="${color} font-medium text-sm">${arrow} ${Math.abs(data.가격.change_percent).toFixed(2)}%</span>
-                    </div>`;
-
-                    // 시총 + 52주 범위 인라인
-                    const infoParts = [];
-                    if (data.가격.market_cap) {
-                        let capHtml = `시총 <span class="font-medium">${escapeHtml(data.가격.market_cap)}</span>`;
-                        if (data.가격.market_cap_tier) capHtml += ` <span class="px-1.5 py-0.5 bg-gray-100 rounded text-xs">${escapeHtml(data.가격.market_cap_tier)}</span>`;
-                        infoParts.push(capHtml);
-                    }
-                    if (data.범위_52주) {
-                        infoParts.push(`52주 $${data.범위_52주.low_52w.toLocaleString()} ~ $${data.범위_52주.high_52w.toLocaleString()}`);
-                    }
-                    if (infoParts.length > 0) {
-                        html += `<div class="flex items-center gap-2 flex-wrap mt-1 text-xs text-gray-500">${infoParts.join(' <span class="text-gray-300">|</span> ')}</div>`;
-                    }
-
-                    if (data.가격.usd_krw_rate) {
-                        html += `<div class="text-xs text-gray-400 mt-0.5">적용 환율: ${data.가격.usd_krw_rate.toLocaleString()}원/$</div>`;
-                    }
-                }
-
-                html += `</div>`;
+                h+=`</div>`;
             }
 
-            // ── 핵심 요약 (company/news — 위로 이동) ──
-            if (data.인사이트 && (route === 'company' || route === 'news')) {
-                html += `<div class="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                    <div class="text-sm font-medium text-blue-800 mb-1">핵심 요약</div>
-                    <div class="text-sm text-blue-700 leading-relaxed space-y-2">${renderMarkdown(data.인사이트)}</div>
-                </div>`;
-            }
+            if(data.인사이트&&(route==='company'||route==='news'))
+                h+=`<div class="resp-section"><div class="insight-box"><div class="insight-label">핵심 요약</div><div class="insight-text">${renderMd(data.인사이트)}</div></div></div>`;
 
-            // ── 핵심지표 칩 그리드 ──
-            if (data.핵심지표 && data.핵심지표.length > 0) {
-                html += `<div class="mb-4">
-                    <div class="text-sm font-medium text-gray-700 mb-2">핵심 지표</div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">`;
-                data.핵심지표.forEach(m => {
-                    const levelColor = m.level === '높음' ? 'text-red-600 bg-red-50' : m.level === '낮음' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 bg-gray-50';
-                    html += `<div class="p-3 border border-gray-200 rounded-lg text-center">
-                        <div class="text-xs text-gray-500">${escapeHtml(m.name)}</div>
-                        <div class="font-bold text-gray-800 mt-0.5">${escapeHtml(m.value)}</div>
-                        <div class="text-xs mt-0.5 px-1.5 py-0.5 rounded ${levelColor} inline-block">${escapeHtml(m.level)}</div>
-                    </div>`;
+            if(data.핵심지표&&data.핵심지표.length){
+                h+=`<div class="resp-section"><div class="resp-label">핵심 지표</div><div class="metric-grid">`;
+                data.핵심지표.forEach(m=>{
+                    const lc=m.level==='높음'?'level-high':m.level==='낮음'?'level-low':'level-normal';
+                    h+=`<div class="metric-chip"><div class="metric-name">${esc(m.name)}</div><div class="metric-value">${esc(m.value)}</div><div class="metric-level ${lc}">${esc(m.level)}</div></div>`;
                 });
-                html += `</div></div>`;
+                h+=`</div></div>`;
             }
 
-            // ── 뉴스 ──
-            if (data.뉴스 && data.뉴스.length > 0) {
-                const newsCards = data.뉴스.map(n => `<div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <a href="${escapeHtml(n.url)}" target="_blank" class="text-sm font-medium text-blue-700 hover:underline">${escapeHtml(n.title)}</a>
-                    <div class="text-xs text-gray-500 mt-1">${escapeHtml(n.source)}${n.published_at ? ' · ' + escapeHtml(n.published_at) : ''}</div>
-                    ${n.summary ? `<p class="text-xs text-gray-600 mt-1">${escapeHtml(n.summary)}</p>` : ''}
-                </div>`).join('');
-
-                if (route === 'news') {
-                    html += `<div class="mb-4">
-                        <div class="text-sm font-medium text-gray-700 mb-2">최근 뉴스</div>
-                        <div class="space-y-2">${newsCards}</div>
-                    </div>`;
-                } else {
-                    html += `<details class="mb-4">
-                        <summary class="flex items-center gap-1.5 text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-800 select-none">
-                            <span class="details-arrow text-xs">▶</span>최근 뉴스 (${data.뉴스.length})
-                        </summary>
-                        <div class="mt-2 space-y-2">${newsCards}</div>
-                    </details>`;
-                }
+            if(data.뉴스&&data.뉴스.length){
+                const nc=data.뉴스.map(n=>`<div class="news-card"><a href="${esc(n.url)}" target="_blank" class="news-title">${esc(n.title)}</a><div class="news-meta">${esc(n.source)}${n.published_at?' · '+esc(n.published_at):''}</div>${n.summary?`<div class="news-summary">${esc(n.summary)}</div>`:''}</div>`).join('');
+                if(route==='news') h+=`<div class="resp-section"><div class="resp-label">최근 뉴스</div>${nc}</div>`;
+                else h+=`<details class="resp-section"><summary style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#4b5563;cursor:pointer;user-select:none"><span class="details-arrow">▶</span>최근 뉴스 (${data.뉴스.length})</summary><div style="margin-top:8px">${nc}</div></details>`;
             }
 
-            // ── 회사 소개 (접기/펼치기) ──
-            if (data.회사소개) {
-                html += `<details class="mb-4">
-                    <summary class="flex items-center gap-1.5 text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-800 select-none">
-                        <span class="details-arrow text-xs">▶</span>회사 소개
-                    </summary>
-                    <div class="mt-2 text-sm text-gray-600 leading-relaxed space-y-2">${formatSentences(data.회사소개)}</div>
-                </details>`;
-            }
+            if(data.회사소개) h+=`<details class="resp-section"><summary style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#4b5563;cursor:pointer;user-select:none"><span class="details-arrow">▶</span>회사 소개</summary><div style="margin-top:8px" class="resp-text">${fmtSent(data.회사소개)}</div></details>`;
 
-            // ── 용어설명 ──
-            if (data.용어설명) {
-                html += `<div class="mb-4">
-                    <div class="text-sm font-medium text-gray-700 mb-1">용어 설명</div>
-                    <div class="text-sm text-gray-600 leading-relaxed space-y-2">${formatSentences(data.용어설명)}</div>
-                </div>`;
-            }
+            if(data.용어설명) h+=`<div class="resp-section"><div class="resp-label">용어 설명</div><div class="resp-text">${fmtSent(data.용어설명)}</div></div>`;
 
-            // ── 인사이트 (general/advisor) ──
-            if (data.인사이트 && route !== 'company' && route !== 'news') {
-                html += `<div class="mb-4">
-                    <div class="text-sm text-gray-700 leading-relaxed space-y-2">${renderMarkdown(data.인사이트)}</div>
-                </div>`;
-            }
+            if(data.인사이트&&route!=='company'&&route!=='news') h+=`<div class="resp-section"><div class="resp-text">${renderMd(data.인사이트)}</div></div>`;
 
-            // advisor/general 안내 문구
-            if (route === 'advisor' || route === 'general') {
-                html += `<p class="mb-4 text-xs text-blue-500">참고용 안내이며, 실제 투자는 본인의 판단으로 결정해 주세요.</p>`;
-            }
+            if(route==='advisor'||route==='general') h+=`<div style="font-size:11px;color:#1a56db;margin-bottom:16px">참고용 안내이며, 실제 투자는 본인의 판단으로 결정해 주세요.</div>`;
 
-            // 출처 + 확신도
-            if (data.출처 && data.출처.length > 0) {
-                const sourceLinks = data.출처.map(s => {
-                    if (s.startsWith('http')) {
-                        try {
-                            const domain = new URL(s).hostname.replace('www.', '');
-                            return `<a href="${escapeHtml(s)}" target="_blank" class="text-gray-500 hover:text-blue-500 underline">${escapeHtml(domain)}</a>`;
-                        } catch(e) {}
-                    }
-                    return escapeHtml(s);
-                });
-                html += `<div class="pt-3 border-t border-gray-100 text-xs text-gray-400">
-                    <div class="mb-1">출처</div>
-                    <div class="flex flex-wrap gap-x-3 gap-y-1">${sourceLinks.join('')}</div>
-                    <div class="mt-1">확신도: ${escapeHtml(data.확신도)}</div>
-                </div>`;
+            if(data.출처&&data.출처.length){
+                const sl=data.출처.map(s=>{if(s.startsWith('http')){try{return `<a href="${esc(s)}" target="_blank" class="source-link">${esc(new URL(s).hostname.replace('www.',''))}</a>`}catch(e){}}return esc(s);});
+                h+=`<div class="source-bar"><div style="margin-bottom:4px">출처</div><div style="display:flex;flex-wrap:wrap;gap:8px">${sl.join('')}</div><div style="margin-top:4px">확신도: ${esc(data.확신도)}</div></div>`;
             }
-
-            return highlightTerms(html);
+            return highlightTerms(h);
         }
 
-        function escapeHtml(text) {
-            if (!text) return '';
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return String(text).replace(/[&<>"']/g, m => map[m]);
-        }
-
-        function formatSentences(text) {
-            if (!text) return '';
-            // 줄바꿈이 이미 있으면 그대로 사용, 없으면 문장 단위로 분리
-            const escaped = escapeHtml(text);
-            if (escaped.includes('\n')) {
-                return escaped.split('\n').filter(s => s.trim()).map(s => `<p>${s.trim()}</p>`).join('');
-            }
-            // 문장 끝(. 또는 다) 기준으로 분리
-            const sentences = escaped.split(/(?<=[.다])\s+/);
-            return sentences.filter(s => s.trim()).map(s => `<p>${s.trim()}</p>`).join('');
-        }
-
-        function renderMarkdown(text) {
-            if (!text) return '';
-            const escaped = escapeHtml(text);
-            const lines = escaped.split('\n').filter(s => s.trim());
-            return lines.map(line => {
-                // **볼드** → <strong>
-                let processed = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                // [텍스트](url) → <a> 링크
-                processed = processed.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-                    '<a href="$2" target="_blank" class="underline hover:text-blue-900">$1</a>');
-                return `<p>${processed}</p>`;
-            }).join('');
-        }
+        function esc(t){return escapeHtml(t);}
+        function escapeHtml(t){if(!t)return '';const m={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};return String(t).replace(/[&<>"']/g,c=>m[c]);}
+        function fmtSent(t){if(!t)return '';const e=escapeHtml(t);if(e.includes('\n'))return e.split('\n').filter(s=>s.trim()).map(s=>`<p style="margin-bottom:6px">${s.trim()}</p>`).join('');return e.split(/(?<=[.다])\s+/).filter(s=>s.trim()).map(s=>`<p style="margin-bottom:6px">${s.trim()}</p>`).join('');}
+        function renderMd(t){if(!t)return '';return escapeHtml(t).split('\n').filter(s=>s.trim()).map(l=>{let p=l.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');p=p.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" style="text-decoration:underline">$1</a>');return `<p style="margin-bottom:6px">${p}</p>`;}).join('');}
     </script>
 </body>
 </html>

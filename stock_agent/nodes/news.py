@@ -1,6 +1,7 @@
 """뉴스서치 에이전트 노드"""
 
 from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
 
 from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
@@ -12,7 +13,7 @@ from stock_agent.tools.ticker_mapping import resolve_ticker
 news_tools = [resolve_ticker, tavily_search_news]
 
 news_agent = create_agent(
-    model=DEFAULT_MODEL,
+    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
     tools=news_tools,
     system_prompt=NEWS_AGENT_PROMPT,
 )

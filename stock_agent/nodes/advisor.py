@@ -1,6 +1,7 @@
 """개인 맞춤 투자 안내 에이전트 노드"""
 
 from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
 
 from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
@@ -9,7 +10,7 @@ from stock_agent.tools.tavily_tools import tavily_search_advisor
 
 # 에이전트 생성
 advisor_agent = create_agent(
-    model=DEFAULT_MODEL,
+    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
     tools=[tavily_search_advisor],
     system_prompt=ADVISOR_AGENT_PROMPT,
 )

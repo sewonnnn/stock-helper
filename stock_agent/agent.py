@@ -9,7 +9,7 @@
 from langgraph.graph import StateGraph, END
 
 from stock_agent.utils.state import GraphState
-from stock_agent.utils.constants import MAX_RETRIES
+from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
 from stock_agent.utils.schemas import StockResponse
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
@@ -46,6 +46,21 @@ def check_validation(state: GraphState) -> str:
 def increment_retry(state: GraphState) -> dict:
     """재시도 카운터를 증가시킵니다."""
     return {"retry_count": state.get("retry_count", 0) + 1}
+
+
+def _filter_by_trusted_domains(urls: list[str], trusted_domains: list[str]) -> list[str]:
+    """신뢰 도메인에 속하는 URL만 필터링합니다."""
+    from urllib.parse import urlparse
+
+    filtered = []
+    for url in urls:
+        try:
+            hostname = urlparse(url).hostname or ""
+            if any(hostname == d or hostname.endswith("." + d) for d in trusted_domains):
+                filtered.append(url)
+        except Exception:
+            continue
+    return filtered
 
 
 def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
@@ -100,10 +115,11 @@ def general_direct_response(state: GraphState) -> dict:
     # 혹시 [텍스트](url) 형태도 제거
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출 → 유효성 검사
+    # source_data에서 URL 추출 → 신뢰 도메인 필터 → 유효성 검사
     urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
     unique_urls = list(dict.fromkeys(urls))[:5]
-    sources = _validate_urls(unique_urls)
+    trusted_urls = _filter_by_trusted_domains(unique_urls, TRUSTED_NEWS_DOMAINS)
+    sources = _validate_urls(trusted_urls)
 
     return {
         "final_answer": StockResponse(
@@ -126,10 +142,11 @@ def advisor_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출 → 유효성 검사
+    # source_data에서 URL 추출 → 신뢰 도메인 필터 → 유효성 검사
     urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
     unique_urls = list(dict.fromkeys(urls))[:5]
-    sources = _validate_urls(unique_urls)
+    trusted_urls = _filter_by_trusted_domains(unique_urls, TRUSTED_ADVISOR_DOMAINS)
+    sources = _validate_urls(trusted_urls)
 
     return {
         "final_answer": StockResponse(

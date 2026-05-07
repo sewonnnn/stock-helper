@@ -1,11 +1,12 @@
 from langchain_tavily import TavilySearch
 
-from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
+from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS, EXCLUDED_DOMAINS
 
 # 뉴스 검색 — 최근 1주일 이내
 tavily_search_news = TavilySearch(
     max_results=5,
     include_domains=TRUSTED_NEWS_DOMAINS,
+    exclude_domains=EXCLUDED_DOMAINS,
     time_range="week",
 )
 
@@ -13,6 +14,7 @@ tavily_search_news = TavilySearch(
 tavily_search_general = TavilySearch(
     max_results=5,
     include_domains=TRUSTED_NEWS_DOMAINS,
+    exclude_domains=EXCLUDED_DOMAINS,
     time_range="month",
 )
 
@@ -20,6 +22,7 @@ tavily_search_general = TavilySearch(
 tavily_search_advisor = TavilySearch(
     max_results=5,
     include_domains=TRUSTED_ADVISOR_DOMAINS,
+    exclude_domains=EXCLUDED_DOMAINS,
     time_range="year",
 )
 

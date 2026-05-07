@@ -43,6 +43,21 @@ TRUSTED_ADVISOR_DOMAINS = TRUSTED_NEWS_DOMAINS + [
     "banksalad.com",
 ]
 
+# Tavily 제외 도메인 (소셜미디어·UGC)
+EXCLUDED_DOMAINS = [
+    "facebook.com",
+    "instagram.com",
+    "youtube.com",
+    "twitter.com",
+    "x.com",
+    "tiktok.com",
+    "reddit.com",
+    "namu.wiki",
+    "blog.naver.com",
+    "cafe.naver.com",
+    "tistory.com",
+]
+
 # 면책문구
 DISCLAIMER = (
     "본 내용은 투자 권유가 아닙니다. "

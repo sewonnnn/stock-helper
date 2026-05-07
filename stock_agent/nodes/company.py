@@ -1,6 +1,7 @@
 """기업분석 에이전트 노드"""
 
 from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
 
 from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
@@ -23,7 +24,7 @@ company_tools = [
 ]
 
 company_agent = create_agent(
-    model=DEFAULT_MODEL,
+    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
     tools=company_tools,
     system_prompt=COMPANY_AGENT_PROMPT,
 )
