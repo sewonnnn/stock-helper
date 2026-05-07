@@ -30,6 +30,19 @@ TRUSTED_NEWS_DOMAINS = [
     "mt.co.kr",
 ]
 
+# Advisor용 신뢰 도메인 (뉴스 + 금융 교육/증권사)
+TRUSTED_ADVISOR_DOMAINS = TRUSTED_NEWS_DOMAINS + [
+    "investopedia.com",
+    "nerdwallet.com",
+    "kbsec.com",
+    "samsungpop.com",
+    "miraeassetdaewoo.com",
+    "nhqv.com",
+    "shinhaninvest.com",
+    "tossinvest.com",
+    "banksalad.com",
+]
+
 # 면책문구
 DISCLAIMER = (
     "본 내용은 투자 권유가 아닙니다. "

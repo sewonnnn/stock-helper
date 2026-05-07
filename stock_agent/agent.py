@@ -48,6 +48,26 @@ def increment_retry(state: GraphState) -> dict:
     return {"retry_count": state.get("retry_count", 0) + 1}
 
 
+def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
+    """URL 목록을 병렬로 유효성 검사하여 살아있는 URL만 반환합니다."""
+    if not urls:
+        return []
+
+    import concurrent.futures
+    import requests
+
+    def _check(url: str) -> str | None:
+        try:
+            resp = requests.head(url, timeout=timeout, allow_redirects=True)
+            return url if resp.status_code < 400 else None
+        except Exception:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(urls)) as executor:
+        results = executor.map(_check, urls)
+        return [url for url in results if url]
+
+
 def glossary_direct_response(state: GraphState) -> dict:
     """glossary는 Self-RAG 내부에서 이미 검증 완료이므로 Responder 스킵.
     직접 StockResponse를 구성합니다."""
@@ -80,10 +100,10 @@ def general_direct_response(state: GraphState) -> dict:
     # 혹시 [텍스트](url) 형태도 제거
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출 (Tavily 원본 결과에서)
-    sources = []
+    # source_data에서 URL 추출 → 유효성 검사
     urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
-    sources = list(dict.fromkeys(urls))[:5]  # 중복 제거, 최대 5개
+    unique_urls = list(dict.fromkeys(urls))[:5]
+    sources = _validate_urls(unique_urls)
 
     return {
         "final_answer": StockResponse(
@@ -106,10 +126,10 @@ def advisor_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출
-    sources = []
+    # source_data에서 URL 추출 → 유효성 검사
     urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
-    sources = list(dict.fromkeys(urls))[:5]
+    unique_urls = list(dict.fromkeys(urls))[:5]
+    sources = _validate_urls(unique_urls)
 
     return {
         "final_answer": StockResponse(

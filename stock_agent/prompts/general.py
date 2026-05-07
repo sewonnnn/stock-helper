@@ -26,4 +26,4 @@ Rules:
 - Never say "I recommend buying X" — instead say "최근 관심을 받고 있는 종목은..." or "검색 결과에 따르면..."
 - If search returns no useful results, say "관련 정보를 찾을 수 없습니다."
 - Maximum 5 items if listing stocks/ETFs.
-- Always remind that this is not investment advice (briefly, at the end)."""
+- Do NOT include any disclaimer or warning at the end. The disclaimer is handled separately by the system."""
