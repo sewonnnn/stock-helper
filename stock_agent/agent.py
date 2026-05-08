@@ -1,11 +1,11 @@
 """메인 LangGraph StateGraph 조립
 
 흐름:
-  맥락 보강 → 슈퍼바이저 → (company | news) → 검증(Groundedness+Helpfulness) → 응답 → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → (general | advisor) → 직통 응답(검증 포함) → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → chat → 직통 응답(검증 없음) → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → company → 응답(LLM 구조화) → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → news → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → (general | advisor) → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → chat → 직통 응답 → 히스토리 저장
   맥락 보강 → 슈퍼바이저 → glossary → 성공: 직통 응답 / 실패: general 폴백 (Corrective RAG)
-  company/news 검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
 """
 
 from langgraph.graph import StateGraph, END
@@ -13,8 +13,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
-from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS, UNKNOWN_RESPONSE
-from stock_agent.utils.schemas import StockResponse
+from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
+from stock_agent.utils.schemas import StockResponse, NewsItem
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
 from stock_agent.nodes.news import news_node
@@ -22,7 +22,6 @@ from stock_agent.nodes.glossary import glossary_node, GLOSSARY_FALLBACK
 from stock_agent.nodes.general import general_node
 from stock_agent.nodes.advisor import advisor_node
 from stock_agent.nodes.chat import chat_node
-from stock_agent.nodes.validator import validator_node
 from stock_agent.nodes.responder import responder_node
 
 
@@ -130,68 +129,6 @@ def route_by_supervisor(state: GraphState) -> str:
     return mapping.get(route, "general")
 
 
-def check_validation(state: GraphState) -> str:
-    """검증 결과에 따라 응답 or 재시도를 결정합니다."""
-    if state["validated"]:
-        return "responder"
-    if state.get("retry_count", 0) >= MAX_RETRIES:
-        return "responder"
-    return "retry"
-
-
-def increment_retry(state: GraphState) -> dict:
-    """재시도 카운터를 증가시킵니다."""
-    return {"retry_count": state.get("retry_count", 0) + 1}
-
-
-def _validate_draft(question: str, draft: str, source_data: str, check_hallucination: bool = True) -> bool:
-    """Groundedness(할루시네이션) + Answer Helpfulness(유용성) 병렬 검증. 통과 시 True.
-
-    Args:
-        check_hallucination: False이면 Answer Helpfulness만 검사 (advisor처럼 합성 비중이 높은 경우)
-    """
-    import concurrent.futures
-    from stock_agent.chains.hallucination_grader import hallucination_grader
-    from stock_agent.chains.answer_grader import answer_grader
-    from stock_agent.utils.logging_config import get_logger
-    logger = get_logger(__name__)
-
-    if not source_data.strip():
-        return True
-
-    try:
-        if check_hallucination:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                future_hal = executor.submit(
-                    hallucination_grader.invoke,
-                    {"documents": source_data, "generation": draft},
-                )
-                future_use = executor.submit(
-                    answer_grader.invoke,
-                    {"question": question, "generation": draft},
-                )
-                hal_result = future_hal.result()
-                use_result = future_use.result()
-
-            if not hal_result.binary_score:
-                logger.warning("할루시네이션 감지됨 (direct response)")
-                return False
-        else:
-            use_result = answer_grader.invoke(
-                {"question": question, "generation": draft}
-            )
-
-        if use_result.binary_score != "yes":
-            logger.warning("유용성 부족 (direct response)")
-            return False
-
-        logger.info("검증 통과 (direct response)")
-        return True
-    except Exception as e:
-        logger.warning("검증 실패, 통과 처리: %s", e)
-        return True
-
-
 def _filter_by_trusted_domains(urls: list[str], trusted_domains: list[str]) -> list[str]:
     """신뢰 도메인에 속하는 URL만 필터링합니다. PDF 등 파일 링크는 제외."""
     from urllib.parse import urlparse
@@ -266,25 +203,60 @@ def glossary_direct_response(state: GraphState) -> dict:
     }
 
 
-def general_direct_response(state: GraphState) -> dict:
-    """general은 웹 검색 결과를 이미 한국어로 정리했으므로 Responder 스킵.
-    Groundedness + Answer Helpfulness 검증 후 StockResponse를 직접 구성합니다."""
+def news_direct_response(state: GraphState) -> dict:
+    """news는 tavily 결과가 이미 구조화되어 있으므로 Responder 스킵.
+    StockResponse를 직접 구성합니다."""
     import re
 
     draft = state["draft_answer"]
-    question = state["question"]
-    source_data = state["agent_results"].get("source_data", "")
-    source_urls = state["agent_results"].get("source_urls", [])
+    agent_results = state["agent_results"]
+    source_urls = agent_results.get("source_urls", [])
+    news_items_raw = agent_results.get("news_items", [])
 
-    # Groundedness + Answer Helpfulness 병렬 검증
-    if not _validate_draft(question, draft, source_data):
-        return {
-            "final_answer": StockResponse(
-                insight=UNKNOWN_RESPONSE,
-                sources=[],
-                confidence="낮음",
-            )
-        }
+    # 후속질문 추출
+    draft, followups = _extract_followups(draft)
+
+    # 본문에서 인라인 출처 링크 제거
+    clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
+    clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
+
+    # tavily 결과에서 NewsItem 직접 구성
+    news_list = []
+    for item in news_items_raw:
+        url = item.get("url", "")
+        title = item.get("title", "")
+        if title and url:
+            # URL에서 출처(도메인) 추출
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc.replace("www.", "")
+            news_list.append(NewsItem(
+                title=title,
+                source=domain,
+                url=url,
+            ))
+
+    # 출처 URL 필터 + 유효성 검사
+    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_NEWS_DOMAINS)
+    sources = _validate_urls(trusted_urls)
+
+    return {
+        "final_answer": StockResponse(
+            news=news_list if news_list else None,
+            insight=clean_draft,
+            sources=sources,
+            confidence="높음" if news_list else "중간",
+            follow_up=followups,
+        )
+    }
+
+
+def general_direct_response(state: GraphState) -> dict:
+    """general은 웹 검색 결과를 이미 한국어로 정리했으므로 Responder 스킵.
+    StockResponse를 직접 구성합니다."""
+    import re
+
+    draft = state["draft_answer"]
+    source_urls = state["agent_results"].get("source_urls", [])
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)
@@ -309,23 +281,11 @@ def general_direct_response(state: GraphState) -> dict:
 
 def advisor_direct_response(state: GraphState) -> dict:
     """advisor는 웹 검색 기반 맞춤 안내이므로 Responder 스킵.
-    Groundedness + Answer Helpfulness 검증 후 StockResponse를 직접 구성합니다."""
+    StockResponse를 직접 구성합니다."""
     import re
 
     draft = state["draft_answer"]
-    question = state["question"]
-    source_data = state["agent_results"].get("source_data", "")
     source_urls = state["agent_results"].get("source_urls", [])
-
-    # Answer Helpfulness만 검증 (advisor는 맞춤 조언을 합성하므로 Groundedness 제외)
-    if not _validate_draft(question, draft, source_data, check_hallucination=False):
-        return {
-            "final_answer": StockResponse(
-                insight=UNKNOWN_RESPONSE,
-                sources=[],
-                confidence="낮음",
-            )
-        }
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)
@@ -373,6 +333,7 @@ def build_graph():
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("company", company_node)
     workflow.add_node("news", news_node)
+    workflow.add_node("news_response", news_direct_response)
     workflow.add_node("glossary", glossary_node)
     workflow.add_node("general", general_node)
     workflow.add_node("general_response", general_direct_response)
@@ -381,9 +342,7 @@ def build_graph():
     workflow.add_node("chat", chat_node)
     workflow.add_node("chat_response", chat_direct_response)
     workflow.add_node("glossary_response", glossary_direct_response)
-    workflow.add_node("validator", validator_node)
     workflow.add_node("responder", responder_node)
-    workflow.add_node("increment_retry", increment_retry)
     workflow.add_node("save_history", save_history)
 
     # 진입점: 맥락 보강 → 슈퍼바이저
@@ -404,9 +363,12 @@ def build_graph():
         },
     )
 
-    # company/news → 검증 → 응답
-    workflow.add_edge("company", "validator")
-    workflow.add_edge("news", "validator")
+    # company → 응답
+    workflow.add_edge("company", "responder")
+
+    # news → 직통 응답 → 히스토리 저장
+    workflow.add_edge("news", "news_response")
+    workflow.add_edge("news_response", "save_history")
 
     # general → 직통 응답 → 히스토리 저장
     workflow.add_edge("general", "general_response")
@@ -435,19 +397,6 @@ def build_graph():
         },
     )
     workflow.add_edge("glossary_response", "save_history")
-
-    # 검증 → 응답 or 재시도 (조건부)
-    workflow.add_conditional_edges(
-        "validator",
-        check_validation,
-        {
-            "responder": "responder",
-            "retry": "increment_retry",
-        },
-    )
-
-    # 재시도 → 슈퍼바이저로 복귀
-    workflow.add_edge("increment_retry", "supervisor")
 
     # 응답 → 히스토리 저장 → 종료
     workflow.add_edge("responder", "save_history")

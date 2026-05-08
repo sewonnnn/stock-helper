@@ -1,17 +1,14 @@
 """검색 기반 체인 노드 공통 로직
 
 news, general, advisor 노드가 공유하는 흐름:
-(선택) 검색 쿼리 생성 (LIGHT_MODEL) → tavily 검색 → Document Relevance(관련성 필터) → LLM 합성 (DEFAULT_MODEL)
+(선택) 검색 쿼리 생성 (LIGHT_MODEL) → tavily 검색 → LLM 합성 (DEFAULT_MODEL)
 """
-
-import concurrent.futures
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from stock_agent.utils.constants import DEFAULT_MODEL, LIGHT_MODEL, ERROR_MESSAGES
-from stock_agent.chains.retrieval_grader import retrieval_grader
 from stock_agent.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -45,34 +42,6 @@ def _parse_tavily_results(raw_results) -> list[dict]:
     return items
 
 
-def _filter_relevant_results(items: list[dict], question: str) -> list[dict]:
-    """Document Relevance: 각 검색 결과의 관련성을 병렬로 판단하여 관련 항목만 반환합니다."""
-    if not items:
-        return []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(items)) as executor:
-        futures = {
-            executor.submit(
-                retrieval_grader.invoke,
-                {"document": item["content"], "question": question},
-            ): item
-            for item in items
-        }
-        relevant = []
-        for future in concurrent.futures.as_completed(futures):
-            item = futures[future]
-            try:
-                result = future.result()
-                if result.binary_score == "yes":
-                    relevant.append(item)
-                else:
-                    logger.info("비관련 결과 제외 (Document Relevance): %s", item["title"][:50])
-            except Exception as e:
-                logger.warning("Document Relevance 판단 실패, 포함 처리: %s", e)
-                relevant.append(item)
-        return relevant
-
-
 def _items_to_source_data(items: list[dict]) -> tuple[str, list[str]]:
     """필터링된 항목 리스트를 source_data 텍스트와 URL 리스트로 변환합니다."""
     entries = []
@@ -93,6 +62,7 @@ def run_search_chain(
     empty_message: str,
     error_key: str,
     query_prompt: str | None = None,
+    fallback_on_empty: bool = False,
 ) -> dict:
     """검색 기반 체인을 실행합니다.
 
@@ -104,6 +74,7 @@ def run_search_chain(
         empty_message: 검색 결과 없을 때 메시지
         error_key: ERROR_MESSAGES 딕셔너리 키
         query_prompt: 검색 쿼리 생성용 시스템 프롬프트 (None이면 질문을 그대로 검색)
+        fallback_on_empty: True이면 검색 결과 없을 때 LLM 자체 지식으로 답변 생성
     """
     try:
         # Step 1: 검색 쿼리 결정
@@ -124,23 +95,29 @@ def run_search_chain(
         items = _parse_tavily_results(raw_results)
 
         if not items:
+            if fallback_on_empty:
+                # 검색 결과 없음 → LLM 자체 지식으로 폴백 답변 생성
+                logger.info("[%s] 검색 결과 없음 → LLM 폴백", agent_name)
+                synth_prompt = ChatPromptTemplate.from_messages([
+                    ("system", synthesis_prompt),
+                    ("human", "질문: {question}\n\n검색 결과:\n(검색 결과가 없습니다. 당신의 지식을 바탕으로 답변해 주세요.)"),
+                ])
+                draft = (synth_prompt | _synthesis_llm).invoke({
+                    "question": question,
+                    "data": "",
+                }).content
+                return {
+                    "draft_answer": draft,
+                    "agent_results": {"source_data": "", "source_urls": [], "agent": agent_name},
+                }
             return {
                 "draft_answer": empty_message,
                 "agent_results": {"source_data": "", "source_urls": [], "agent": agent_name},
             }
 
-        # Step 3: Document Relevance — 관련 결과만 필터링
-        relevant_items = _filter_relevant_results(items, question)
+        source_data, source_urls = _items_to_source_data(items)
 
-        if not relevant_items:
-            return {
-                "draft_answer": empty_message,
-                "agent_results": {"source_data": "", "source_urls": [], "agent": agent_name},
-            }
-
-        source_data, source_urls = _items_to_source_data(relevant_items)
-
-        # Step 4: LLM 합성 (DEFAULT_MODEL)
+        # Step 3: LLM 합성 (DEFAULT_MODEL)
         synth_prompt = ChatPromptTemplate.from_messages([
             ("system", synthesis_prompt),
             ("human", "질문: {question}\n\n검색 결과:\n{data}"),
@@ -155,6 +132,10 @@ def run_search_chain(
             "agent_results": {
                 "source_data": source_data,
                 "source_urls": source_urls,
+                "news_items": [
+                    {"title": item["title"], "url": item["url"]}
+                    for item in items
+                ],
                 "agent": agent_name,
             },
         }

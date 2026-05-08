@@ -10,8 +10,4 @@ class GraphState(TypedDict):
     route: str
     agent_results: dict
     draft_answer: str
-    validated: bool
-    validation_reason: str
-    hallucinated_parts: list
-    retry_count: int
     final_answer: StockResponse

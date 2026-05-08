@@ -4,6 +4,9 @@ RESPONDER_PROMPT = """You are a response formatter for a Korean stock assistant 
 
 Given the validated answer and source data, produce a structured response following the StockResponse schema.
 
+User question:
+{question}
+
 Validated answer:
 {validated_answer}
 
@@ -19,7 +22,13 @@ Rules:
    - "glossary" questions: Fill glossary only
    - "general" questions: Fill insight only (use it for the main answer text). If specific stocks are mentioned, optionally fill news items.
 2. For insight: Write 2-3 sentences in simple Korean that a beginner can understand. Explain what the numbers mean, not just state them.
-3. For key_metrics: Classify each metric level as "높음", "보통", or "낮음" based on general market standards.
+3. For key_metrics:
+   - If the user question is a GENERAL analysis (e.g. "분석해줘", "알려줘", "어때?") without mentioning specific metrics,
+     ALWAYS include exactly these 6 fixed metrics in this order: PER, PBR, ROE, 배당수익률, 부채비율, 영업이익률.
+     If a metric has no data, set its level to "정보없음".
+   - If the user question mentions SPECIFIC metrics or topics (e.g. "PER이 뭐야?", "배당 얼마야?", "재무 건전성"),
+     focus on those mentioned metrics and include closely related ones.
+   - Classify each metric level as "높음", "보통", or "낮음" based on general market standards.
 4. For confidence: Set to "높음" if data comes directly from tools, "중간" if partially inferred, "낮음" if uncertain.
 5. All text must be in Korean. Keep ticker symbols and English names as-is.
 6. Always include sources (source list).
