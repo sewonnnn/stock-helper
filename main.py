@@ -10,6 +10,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -27,6 +28,18 @@ from stock_agent.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 app = FastAPI(title="주식 멘토 AI", version="1.0.0")
+
+# CORS 설정 — Vercel 프론트엔드에서 Render 백엔드 호출 허용
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://stock-helper.vercel.app",  # TODO: 실제 Vercel 도메인으로 변경
+        "http://localhost:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ChatRequest(BaseModel):

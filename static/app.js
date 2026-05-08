@@ -1,3 +1,6 @@
+const IS_LOCAL = ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
+const API_BASE = IS_LOCAL ? '' : 'https://stock-helper.onrender.com';  // TODO: 실제 Render 배포 URL로 변경
+
 let isLoading = false, isComposing = false, glossaryHintShown = false, abortController = null, currentLoadingId = null;
 let currentThreadId = null;
 const STORAGE_KEY = 'stockmentor_conversations';
@@ -115,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── 용어 사전 (glossary.json에서 로드) ──
 const GLOSSARY={}, GLOSSARY_GROUP={};
 let GLOSSARY_TERMS = [];
-fetch('/static/glossary.json').then(r=>r.json()).then(data=>{
+fetch(IS_LOCAL ? '/static/glossary.json' : './glossary.json').then(r=>r.json()).then(data=>{
     data.forEach((e,i)=>e.terms.forEach(t=>{GLOSSARY[t]=e.tip;GLOSSARY_GROUP[t]=i;}));
     GLOSSARY_TERMS = Object.keys(GLOSSARY).sort((a,b)=>b.length-a.length);
 });
@@ -218,7 +221,7 @@ async function sendQuestion(){
     abortController=new AbortController();
     const timeoutId=setTimeout(()=>abortController.abort(),60000);
     try {
-        const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q, thread_id:reqThreadId}),signal:abortController.signal});
+        const r=await fetch(`${API_BASE}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q, thread_id:reqThreadId}),signal:abortController.signal});
         clearTimeout(timeoutId);
         if(!r.ok) throw new Error('서버 오류가 발생했습니다. ('+r.status+')');
         let j;
