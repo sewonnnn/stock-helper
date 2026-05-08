@@ -33,7 +33,7 @@ app = FastAPI(title="주식 멘토 AI", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://stock-helper-1f6o.vercel.app",
+        "https://stock-helper-henna.vercel.app",
         "http://localhost:8000",
     ],
     allow_credentials=True,
