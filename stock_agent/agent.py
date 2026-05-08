@@ -8,6 +8,7 @@
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
 from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
@@ -303,7 +304,8 @@ def build_graph():
     workflow.add_edge("responder", "save_history")
     workflow.add_edge("save_history", END)
 
-    return workflow.compile(checkpointer=MemorySaver())
+    serde = JsonPlusSerializer(allowed_msgpack_modules=[StockResponse])
+    return workflow.compile(checkpointer=MemorySaver(serde=serde))
 
 
 # 그래프 인스턴스

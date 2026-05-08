@@ -40,14 +40,18 @@ def glossary_node(state: GraphState) -> dict:
         }
 
     # 2. ISREL: 문서 관련성 판단 (병렬 처리)
+    # ThreadPoolExecutor: 여러 작업을 스레드 풀에 넣어서 동시에 실행시켜주는 도구
     relevant_contents = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(docs)) as executor:
+        # 각 문서를 별도 스레드에 제출
+        # futures: executor.submit()의 반환값, 아직 완료되지 않았지만 나중에 결과를 받을 수 있는 객체
         futures = [
             executor.submit(_grade_document, question, doc.page_content)
             for doc in docs
         ]
+        # 완료되는 순서대로 결과 수집
         for future in concurrent.futures.as_completed(futures):
-            score, content = future.result()
+            score, content = future.result()  # 번호표로 결과 받기
             if score == "yes":
                 relevant_contents.append(content)
 

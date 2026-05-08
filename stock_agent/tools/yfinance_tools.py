@@ -142,7 +142,7 @@ def get_financial_health(ticker: str) -> dict:
         return {
             "ticker": ticker,
             "total_revenue": info.get("totalRevenue"),
-            "operating_income": info.get("operatingCashflow"),
+            "operating_income": info.get("operatingIncome"),
             "net_income": info.get("netIncomeToCommon"),
             "revenue_growth_yoy": info.get("revenueGrowth"),
             "operating_margin": info.get("operatingMargins"),
