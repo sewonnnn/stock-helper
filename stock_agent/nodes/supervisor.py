@@ -1,4 +1,4 @@
-"""슈퍼바이저 노드: 질문을 라우팅합니다."""
+"""슈퍼바이저 노드: LLM 구조화 출력으로 질문을 라우팅합니다."""
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
@@ -28,6 +28,7 @@ def supervisor_node(state: GraphState) -> dict:
     question = state["question"]
     try:
         result: RouteQuery = question_router.invoke({"question": question})
+        logger.info("라우팅: %s", result.datasource)
         return {"route": result.datasource}
     except Exception as e:
         logger.error("라우팅 실패, general로 폴백: %s", e)

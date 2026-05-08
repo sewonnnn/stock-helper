@@ -1,4 +1,4 @@
-"""ISUSE: 답변 유용성 판단 체인"""
+"""Answer Helpfulness: 답변 유용성 판단 체인"""
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI

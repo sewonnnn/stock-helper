@@ -61,6 +61,13 @@ def _check_company_typo(question: str) -> StockResponse | None:
     """기업명 오타를 빠르게 감지하여 유사 기업을 추천합니다. LLM 호출 없이 즉시 반환."""
     q = question.strip().lower()
 
+    # 인사/일상 표현은 오타 감지 스킵
+    _SKIP_PATTERNS = {"안녕", "안녕하세요", "반가워", "고마워", "감사합니다", "감사해요",
+                      "네", "응", "아니", "ㅇㅇ", "ㄴㄴ", "ㅎㅇ", "ㅂㅂ", "잘가",
+                      "도움", "도와줘", "뭐해", "뭘 할 수 있어", "기능"}
+    if q in _SKIP_PATTERNS or len(q) <= 2:
+        return None
+
     # 액션 키워드 제거하여 기업명 후보 추출
     action_patterns = [
         '분석해줘', '분석해', '분석', '시가총액 알려줘', '시가총액',

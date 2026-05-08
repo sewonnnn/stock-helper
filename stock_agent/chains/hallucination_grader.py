@@ -1,4 +1,4 @@
-"""ISSUP: 할루시네이션 판단 체인"""
+"""Groundedness: 답변의 소스 근거 여부 판단 체인 (할루시네이션 감지)"""
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI

@@ -1,4 +1,4 @@
-"""ISREL: 문서 관련성 판단 체인"""
+"""Document Relevance: 검색된 문서의 질문 관련성 판단 체인"""
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI

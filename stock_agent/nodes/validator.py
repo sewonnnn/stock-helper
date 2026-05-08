@@ -1,54 +1,34 @@
-"""검증 노드: 에이전트 답변의 사실 정확성을 검증합니다."""
+"""검증 노드: Groundedness(할루시네이션) + Answer Helpfulness(유용성) 병렬 검증
 
-import json
+glossary는 내부에서 이미 검증하므로 여기서는 company/news만 처리합니다.
+"""
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+import concurrent.futures
 
-from stock_agent.utils.constants import VALIDATOR_MODEL
 from stock_agent.utils.state import GraphState
-from stock_agent.prompts.validator import VALIDATOR_PROMPT
+from stock_agent.chains.hallucination_grader import hallucination_grader
+from stock_agent.chains.answer_grader import answer_grader
+from stock_agent.utils.logging_config import get_logger
 
-validator_chain = (
-    ChatPromptTemplate.from_template(VALIDATOR_PROMPT)
-    | ChatOpenAI(model=VALIDATOR_MODEL, temperature=0)
-    | StrOutputParser()
-)
+logger = get_logger(__name__)
 
 
 def validator_node(state: GraphState) -> dict:
-    """답변을 원본 데이터와 대조하여 검증합니다."""
+    """답변을 원본 데이터와 대조하여 Groundedness + Answer Helpfulness 검증합니다."""
     draft_answer = state["draft_answer"]
     agent_results = state["agent_results"]
     source_data = agent_results.get("source_data", "")
-    agent_type = agent_results.get("agent", "")
+    question = state["question"]
 
-    # glossary 에이전트는 Self-RAG 내부에서 이미 검증됨 → 바로 통과
-    if agent_type == "glossary":
+    # 답변이 비어있거나 에러인 경우
+    if not draft_answer.strip() or "error" in draft_answer.lower()[:50]:
         return {
-            "validated": True,
-            "validation_reason": "Self-RAG 내부 검증 통과",
+            "validated": False,
+            "validation_reason": "에이전트가 유효한 답변을 생성하지 못했습니다.",
             "hallucinated_parts": [],
         }
 
-    # company/news/general 에이전트는 실제 도구(yfinance/Tavily)에서 데이터를 가져오므로
-    # 도구 호출 결과가 있으면 기본적으로 신뢰 (도구 기반 = 사실)
-    if agent_type in ("company", "news", "general") and source_data.strip():
-        # 명백한 문제만 체크: 답변이 비어있거나 에러인 경우만 실패
-        if not draft_answer.strip() or "error" in draft_answer.lower()[:50]:
-            return {
-                "validated": False,
-                "validation_reason": "에이전트가 유효한 답변을 생성하지 못했습니다.",
-                "hallucinated_parts": [],
-            }
-        return {
-            "validated": True,
-            "validation_reason": "도구 기반 데이터 확인 (신뢰)",
-            "hallucinated_parts": [],
-        }
-
-    # source_data가 없으면 검증 스킵
+    # 소스 데이터가 없으면 검증 스킵
     if not source_data.strip():
         return {
             "validated": True,
@@ -56,28 +36,48 @@ def validator_node(state: GraphState) -> dict:
             "hallucinated_parts": [],
         }
 
-    # 기타 케이스: LLM 검증 체인 실행
-    raw_result = validator_chain.invoke({
-        "source_data": source_data,
-        "draft_answer": draft_answer,
-    })
-
+    # Groundedness + Answer Helpfulness 병렬 실행
     try:
-        cleaned = raw_result.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-            cleaned = cleaned.rsplit("```", 1)[0]
-        result = json.loads(cleaned)
-    except (json.JSONDecodeError, IndexError):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_hal = executor.submit(
+                hallucination_grader.invoke,
+                {"documents": source_data, "generation": draft_answer},
+            )
+            future_use = executor.submit(
+                answer_grader.invoke,
+                {"question": question, "generation": draft_answer},
+            )
+            hal_result = future_hal.result()
+            use_result = future_use.result()
+    except Exception as e:
+        logger.warning("검증 체인 실패, 통과 처리: %s", e)
         return {
             "validated": True,
-            "validation_reason": "검증 결과 파싱 실패 (통과 처리)",
+            "validation_reason": "검증 체인 실패 (통과 처리)",
             "hallucinated_parts": [],
         }
 
-    verdict = result.get("verdict", "pass")
+    # 할루시네이션 감지
+    if not hal_result.binary_score:
+        logger.warning("할루시네이션 감지됨")
+        return {
+            "validated": False,
+            "validation_reason": "답변이 소스 데이터에 근거하지 않습니다.",
+            "hallucinated_parts": [],
+        }
+
+    # 유용성 부족
+    if use_result.binary_score != "yes":
+        logger.warning("유용성 부족")
+        return {
+            "validated": False,
+            "validation_reason": "답변이 질문에 충분히 유용하지 않습니다.",
+            "hallucinated_parts": [],
+        }
+
+    logger.info("검증 통과 (Groundedness + Answer Helpfulness)")
     return {
-        "validated": verdict == "pass",
-        "validation_reason": result.get("reason", ""),
-        "hallucinated_parts": result.get("hallucinated_parts", []),
+        "validated": True,
+        "validation_reason": "Groundedness + Answer Helpfulness 검증 통과",
+        "hallucinated_parts": [],
     }

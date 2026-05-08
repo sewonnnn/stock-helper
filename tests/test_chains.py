@@ -16,7 +16,7 @@ from stock_agent.nodes.supervisor import question_router, RouteQuery
 from stock_agent.tools.rag_tools import retriever
 
 
-# --- ISREL: 문서 관련성 판단 ---
+# --- Document Relevance: 문서 관련성 판단 ---
 
 def test_retrieval_grader_answer_yes() -> None:
     """관련 있는 질문 → yes"""
@@ -50,7 +50,7 @@ def test_generation_chain() -> None:
     assert "PER" in generation
 
 
-# --- ISSUP: 할루시네이션 판단 ---
+# --- Groundedness: 할루시네이션 판단 ---
 
 def test_hallucination_grader_answer_yes() -> None:
     """문서 기반 답변 → True (근거 있음)"""
@@ -73,7 +73,7 @@ def test_hallucination_grader_answer_no() -> None:
     assert not res.binary_score
 
 
-# --- ISUSE: 답변 유용성 판단 ---
+# --- Answer Helpfulness: 답변 유용성 판단 ---
 
 def test_answer_grader_answer_yes() -> None:
     """질문에 답하는 응답 → yes"""

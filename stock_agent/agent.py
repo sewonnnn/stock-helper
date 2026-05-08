@@ -1,10 +1,11 @@
 """메인 LangGraph StateGraph 조립
 
 흐름:
-  맥락 보강 → 슈퍼바이저 → (company | news) → 검증 → 응답 → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → (general | advisor | chat) → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → (company | news) → 검증(Groundedness+Helpfulness) → 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → (general | advisor) → 직통 응답(검증 포함) → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → chat → 직통 응답(검증 없음) → 히스토리 저장
   맥락 보강 → 슈퍼바이저 → glossary → 성공: 직통 응답 / 실패: general 폴백 (Corrective RAG)
-  검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
+  company/news 검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
 """
 
 from langgraph.graph import StateGraph, END
@@ -12,7 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
-from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
+from stock_agent.utils.constants import MAX_RETRIES, TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS, UNKNOWN_RESPONSE
 from stock_agent.utils.schemas import StockResponse
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
@@ -143,6 +144,54 @@ def increment_retry(state: GraphState) -> dict:
     return {"retry_count": state.get("retry_count", 0) + 1}
 
 
+def _validate_draft(question: str, draft: str, source_data: str, check_hallucination: bool = True) -> bool:
+    """Groundedness(할루시네이션) + Answer Helpfulness(유용성) 병렬 검증. 통과 시 True.
+
+    Args:
+        check_hallucination: False이면 Answer Helpfulness만 검사 (advisor처럼 합성 비중이 높은 경우)
+    """
+    import concurrent.futures
+    from stock_agent.chains.hallucination_grader import hallucination_grader
+    from stock_agent.chains.answer_grader import answer_grader
+    from stock_agent.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+
+    if not source_data.strip():
+        return True
+
+    try:
+        if check_hallucination:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_hal = executor.submit(
+                    hallucination_grader.invoke,
+                    {"documents": source_data, "generation": draft},
+                )
+                future_use = executor.submit(
+                    answer_grader.invoke,
+                    {"question": question, "generation": draft},
+                )
+                hal_result = future_hal.result()
+                use_result = future_use.result()
+
+            if not hal_result.binary_score:
+                logger.warning("할루시네이션 감지됨 (direct response)")
+                return False
+        else:
+            use_result = answer_grader.invoke(
+                {"question": question, "generation": draft}
+            )
+
+        if use_result.binary_score != "yes":
+            logger.warning("유용성 부족 (direct response)")
+            return False
+
+        logger.info("검증 통과 (direct response)")
+        return True
+    except Exception as e:
+        logger.warning("검증 실패, 통과 처리: %s", e)
+        return True
+
+
 def _filter_by_trusted_domains(urls: list[str], trusted_domains: list[str]) -> list[str]:
     """신뢰 도메인에 속하는 URL만 필터링합니다. PDF 등 파일 링크는 제외."""
     from urllib.parse import urlparse
@@ -219,11 +268,23 @@ def glossary_direct_response(state: GraphState) -> dict:
 
 def general_direct_response(state: GraphState) -> dict:
     """general은 웹 검색 결과를 이미 한국어로 정리했으므로 Responder 스킵.
-    draft_answer를 인사이트 필드에 그대로 전달합니다."""
+    Groundedness + Answer Helpfulness 검증 후 StockResponse를 직접 구성합니다."""
     import re
 
     draft = state["draft_answer"]
+    question = state["question"]
+    source_data = state["agent_results"].get("source_data", "")
     source_urls = state["agent_results"].get("source_urls", [])
+
+    # Groundedness + Answer Helpfulness 병렬 검증
+    if not _validate_draft(question, draft, source_data):
+        return {
+            "final_answer": StockResponse(
+                insight=UNKNOWN_RESPONSE,
+                sources=[],
+                confidence="낮음",
+            )
+        }
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)
@@ -248,11 +309,23 @@ def general_direct_response(state: GraphState) -> dict:
 
 def advisor_direct_response(state: GraphState) -> dict:
     """advisor는 웹 검색 기반 맞춤 안내이므로 Responder 스킵.
-    draft_answer를 인사이트 필드에 그대로 전달합니다."""
+    Groundedness + Answer Helpfulness 검증 후 StockResponse를 직접 구성합니다."""
     import re
 
     draft = state["draft_answer"]
+    question = state["question"]
+    source_data = state["agent_results"].get("source_data", "")
     source_urls = state["agent_results"].get("source_urls", [])
+
+    # Answer Helpfulness만 검증 (advisor는 맞춤 조언을 합성하므로 Groundedness 제외)
+    if not _validate_draft(question, draft, source_data, check_hallucination=False):
+        return {
+            "final_answer": StockResponse(
+                insight=UNKNOWN_RESPONSE,
+                sources=[],
+                confidence="낮음",
+            )
+        }
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)

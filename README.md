@@ -80,7 +80,7 @@
 
 - **메인은 커스텀 StateGraph**: 분기/검증/재시도를 명시적으로 제어
 - **서브는 `create_react_agent`**: 도구 호출은 표준 ReAct 패턴
-- **glossary 에이전트에 Self-RAG 정석 적용**: ISREL → ISSUP → ISUSE 3단계 전부 구현
+- **glossary 에이전트에 LangSmith RAG 평가 3요소 적용**: Document Relevance → Groundedness → Answer Helpfulness 3단계 전부 구현
 - **LCEL 체인 + LangGraph 결합**: 단순 LLM 호출은 LCEL, 복잡한 제어 흐름은 LangGraph
 - **검증 분기**: company/news는 검증 노드 경유, glossary/general/advisor는 직통 응답
 - **모델 분리**: 답변 생성은 GPT-4o, 판단/라우팅은 GPT-4o-mini로 비용 최적화
@@ -110,9 +110,9 @@ stock-helper/
 │   │
 │   ├── chains/
 │   │   ├── __init__.py
-│   │   ├── retrieval_grader.py     # ISREL (문서 관련성)
-│   │   ├── hallucination_grader.py # ISSUP (할루시네이션 판단)
-│   │   ├── answer_grader.py        # ISUSE (답변 유용성)
+│   │   ├── retrieval_grader.py     # Document Relevance (문서 관련성)
+│   │   ├── hallucination_grader.py # Groundedness (할루시네이션 판단)
+│   │   ├── answer_grader.py        # Answer Helpfulness (답변 유용성)
 │   │   └── generation.py           # 용어 답변 생성 체인
 │   │
 │   ├── nodes/
@@ -200,17 +200,17 @@ ReAct 패턴으로 yfinance 도구 5개를 질문에 맞게 선택 호출:
 
 Tavily API로 최근 1주 뉴스 검색. 신뢰 도메인 한정.
 
-### 용어설명 에이전트 (glossary) — Self-RAG 정석 적용
+### 용어설명 에이전트 (glossary) — LangSmith RAG 평가 3요소 적용
 
-Pinecone 검색 후 Self-RAG 3단계 grading 적용:
+Pinecone 검색 후 LangSmith 공식 RAG 평가 3단계 적용:
 
 ```
-[질문] → [Pinecone 검색] → [ISREL: 관련성?]
+[질문] → [Pinecone 검색] → [Document Relevance: 관련성?]
                               ├─ No → "용어집에 없음" fallback
                               └─ Yes → [답변 생성 (GPT-4o)]
-                                         → [ISSUP: 근거 있음?]
+                                         → [Groundedness: 근거 있음?]
                                            ├─ No → 재생성 (1회)
-                                           └─ Yes → [ISUSE: 유용?]
+                                           └─ Yes → [Answer Helpfulness: 유용?]
                                                      ├─ No → 재생성 (1회)
                                                      └─ Yes → 최종 응답
 ```
@@ -243,7 +243,7 @@ company/news 에이전트 출력에 대한 사실 검증:
 |---|---|---|
 | company | validator → responder | 구조화된 StockResponse |
 | news | validator → responder | 구조화된 StockResponse |
-| glossary | 내부 Self-RAG (ISREL/ISSUP/ISUSE) | 직통 응답 (용어설명 필드) |
+| glossary | 내부 RAG 평가 (Relevance/Groundedness/Helpfulness) | 직통 응답 (용어설명 필드) |
 | general | 없음 | 직통 응답 (인사이트 필드) |
 | advisor | 없음 | 직통 응답 (인사이트 필드) |
 
@@ -261,9 +261,9 @@ general/advisor의 직통 응답에서도 출처 URL은 신뢰 도메인 필터�
 | 일반 질문 에이전트 | GPT-4o | 자연스러운 한국어 필요 |
 | 어드바이저 에이전트 | GPT-4o | 자연스러운 한국어 필요 |
 | glossary 답변 생성 | GPT-4o | 용어 설명 품질 필요 |
-| ISREL (문서 관련성) | GPT-4o-mini | yes/no 판단 |
-| ISSUP (할루시네이션) | GPT-4o-mini | bool 판단 |
-| ISUSE (답변 유용성) | GPT-4o-mini | yes/no 판단 |
+| Document Relevance (문서 관련성) | GPT-4o-mini | yes/no 판단 |
+| Groundedness (할루시네이션) | GPT-4o-mini | bool 판단 |
+| Answer Helpfulness (답변 유용성) | GPT-4o-mini | yes/no 판단 |
 | 검증 노드 | GPT-4o-mini | 숫자 대조 단순 비교 |
 | responder (최종 출력) | GPT-4o | 구조화 출력 품질 |
 
@@ -365,10 +365,10 @@ pytest tests/test_chains.py -v
 ```
 
 실제 API 호출 기반 테스트 10개:
-- ISREL: 관련 문서 yes/no 판단 (2개)
+- Document Relevance: 관련 문서 yes/no 판단 (2개)
 - 답변 생성: 동작 확인 (1개)
-- ISSUP: 할루시네이션 판단 (2개)
-- ISUSE: 답변 유용성 판단 (2개)
+- Groundedness: 할루시네이션 판단 (2개)
+- Answer Helpfulness: 답변 유용성 판단 (2개)
 - 슈퍼바이저 라우팅: company/news/glossary (3개)
 
 ---
@@ -376,7 +376,7 @@ pytest tests/test_chains.py -v
 ## 핵심 설계 포인트
 
 - **멀티 에이전트 협업**: 5개 도메인 전문 에이전트 분리
-- **Self-RAG 정석**: glossary 에이전트에 ISREL/ISSUP/ISUSE 3단계 전부 구현
+- **LangSmith RAG 평가 3요소**: glossary 에이전트에 Document Relevance/Groundedness/Answer Helpfulness 3단계 전부 구현
 - **이중 검증 체계**: Self-RAG 내부 검증 + 메인 그래프 검증 노드 (역할 분리)
 - **비용 최적화**: GPT-4o / GPT-4o-mini 이원화
 - **시각화 우선 응답**: 텍스트 대신 카드/지표 칩/범위 바
