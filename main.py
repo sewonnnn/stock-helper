@@ -33,7 +33,7 @@ app = FastAPI(title="주식 멘토 AI", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://stock-helper.vercel.app",  # TODO: 실제 Vercel 도메인으로 변경
+        "https://stock-helper-1f6o.vercel.app",
         "http://localhost:8000",
     ],
     allow_credentials=True,
@@ -74,11 +74,22 @@ def _check_company_typo(question: str) -> StockResponse | None:
     """기업명 오타를 빠르게 감지하여 유사 기업을 추천합니다. LLM 호출 없이 즉시 반환."""
     q = question.strip().lower()
 
-    # 인사/일상 표현은 오타 감지 스킵
-    _SKIP_PATTERNS = {"안녕", "안녕하세요", "반가워", "고마워", "감사합니다", "감사해요",
-                      "네", "응", "아니", "ㅇㅇ", "ㄴㄴ", "ㅎㅇ", "ㅂㅂ", "잘가",
-                      "도움", "도와줘", "뭐해", "뭘 할 수 있어", "기능"}
-    if q in _SKIP_PATTERNS or len(q) <= 2:
+    # 금융 용어/질문 패턴이 포함되어 있으면 오타 감지 스킵 (그래프에서 처리)
+    _FINANCE_TERMS = {
+        'etf', '공매도', '배당', '배당금', '인플레이션', '디플레이션', '금리',
+        '채권', '선물', '옵션', '펀드', '인덱스', '포트폴리오', '분산투자',
+        '적립식', '거치식', '증거금', '레버리지', '공모주', '우선주', '보통주',
+        '시가총액', '유상증자', '무상증자', '액면분할', '자사주', '코스피',
+        '코스닥', '나스닥', 's&p500', '다우존스', '환율', '원달러',
+    }
+    _QUESTION_SUFFIXES = {'뭐야', '뭐야?', '뭔가요', '뭔가요?', '란?', '란', '이란',
+                          '종류', '장점', '단점', '위험', '위험성', '경향', '특징',
+                          '차이', '비교', '추천', '시작', '방법', '전략'}
+    if any(term in q for term in _FINANCE_TERMS):
+        return None
+    if any(q.endswith(s) for s in _QUESTION_SUFFIXES):
+        return None
+    if len(q) <= 2:
         return None
 
     # 액션 키워드 제거하여 기업명 후보 추출
@@ -93,6 +104,12 @@ def _check_company_typo(question: str) -> StockResponse | None:
         candidate = candidate.replace(p, '').strip()
 
     if not candidate or len(candidate) < 2:
+        return None
+
+    # candidate에 질문 패턴이 남아있으면 기업명이 아님
+    _QUESTION_REMNANTS = {'뭐야', '뭔가', '뭐', '란?', '란', '이란', '인가', '인가요',
+                          '종류', '장점', '단점', '위험', '경향', '특징', '차이', '비교'}
+    if any(r in candidate for r in _QUESTION_REMNANTS):
         return None
 
     # 정확히 매칭 → 오타 아님, 정상 진행

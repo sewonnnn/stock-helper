@@ -1,5 +1,5 @@
 const IS_LOCAL = ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
-const API_BASE = IS_LOCAL ? '' : 'https://stock-helper.onrender.com';  // TODO: 실제 Render 배포 URL로 변경
+const API_BASE = IS_LOCAL ? '' : 'https://stock-helper-t45j.onrender.com';
 
 let isLoading = false, isComposing = false, glossaryHintShown = false, abortController = null, currentLoadingId = null;
 let currentThreadId = null;
