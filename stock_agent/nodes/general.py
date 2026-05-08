@@ -1,34 +1,19 @@
-"""일반 시장 질문 에이전트 노드 (웹 검색 기반)"""
+"""일반 시장 질문 체인 노드 (웹 검색 기반)"""
 
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
-
-from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
-from stock_agent.prompts.general import GENERAL_AGENT_PROMPT
+from stock_agent.prompts.general import GENERAL_QUERY_PROMPT, GENERAL_SYNTHESIS_PROMPT
 from stock_agent.tools.tavily_tools import tavily_search_general
-
-# 에이전트 생성
-general_agent = create_agent(
-    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
-    tools=[tavily_search_general],
-    system_prompt=GENERAL_AGENT_PROMPT,
-)
+from stock_agent.nodes._search_chain import run_search_chain
 
 
 def general_node(state: GraphState) -> dict:
-    """웹 검색 기반으로 일반 시장 질문에 답변합니다."""
-    question = state["question"]
-    result = general_agent.invoke(
-        {"messages": [{"role": "user", "content": question}]}
+    """웹 검색 기반 일반 시장 질문 체인: 쿼리 생성 → 검색 → 합성."""
+    return run_search_chain(
+        question=state["question"],
+        query_prompt=GENERAL_QUERY_PROMPT,
+        synthesis_prompt=GENERAL_SYNTHESIS_PROMPT,
+        search_tool=tavily_search_general,
+        agent_name="general",
+        empty_message="관련 정보를 찾을 수 없습니다.",
+        error_key="general_failed",
     )
-    ai_messages = [m for m in result["messages"] if m.type == "ai" and m.content]
-    draft = ai_messages[-1].content if ai_messages else ""
-
-    tool_messages = [m for m in result["messages"] if m.type == "tool"]
-    source_data = "\n".join([m.content for m in tool_messages if m.content])
-
-    return {
-        "draft_answer": draft,
-        "agent_results": {"source_data": source_data, "agent": "general"},
-    }

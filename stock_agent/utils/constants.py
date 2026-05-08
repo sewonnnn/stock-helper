@@ -66,3 +66,19 @@ DISCLAIMER = (
 
 # 응답 메시지
 UNKNOWN_RESPONSE = "확인 불가합니다. 정확한 데이터를 찾을 수 없습니다."
+
+# 입력 제한
+MAX_QUESTION_LENGTH = 500
+
+# 에러 메시지 (사용자 노출용 한국어)
+ERROR_MESSAGES = {
+    "routing_failed": "질문을 분류하는 중 오류가 발생했습니다. 다시 시도해 주세요.",
+    "company_failed": "기업 정보를 조회하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "news_failed": "뉴스를 검색하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "general_failed": "정보를 검색하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "advisor_failed": "맞춤 안내를 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "glossary_failed": "용어 정보를 조회하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "pinecone_failed": "용어 데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    "server_error": "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    "input_too_long": f"질문이 너무 깁니다. {MAX_QUESTION_LENGTH}자 이내로 입력해 주세요.",
+}

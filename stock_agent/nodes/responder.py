@@ -26,9 +26,9 @@ def responder_node(state: GraphState) -> dict:
     if not validated:
         return {
             "final_answer": StockResponse(
-                인사이트=UNKNOWN_RESPONSE,
-                출처=[],
-                확신도="낮음",
+                insight=UNKNOWN_RESPONSE,
+                sources=[],
+                confidence="낮음",
             )
         }
 
@@ -44,8 +44,8 @@ def responder_node(state: GraphState) -> dict:
         # 구조화 실패 시 fallback
         return {
             "final_answer": StockResponse(
-                인사이트=draft_answer,
-                출처=[],
-                확신도="중간",
+                insight=draft_answer,
+                sources=[],
+                confidence="중간",
             )
         }

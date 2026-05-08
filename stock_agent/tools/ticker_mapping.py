@@ -1,3 +1,4 @@
+import difflib
 from langchain_core.tools import tool
 
 TICKER_MAP = {
@@ -142,5 +143,11 @@ def resolve_ticker(company_name: str) -> str:
     name_stripped = company_name.strip()
     if name_stripped.isdigit() and len(name_stripped) == 6:
         return f"{name_stripped}.KS"
+
+    # 유사한 기업명 추천
+    close_matches = difflib.get_close_matches(name_lower, TICKER_MAP.keys(), n=3, cutoff=0.4)
+    if close_matches:
+        suggestions = [f"{m}({TICKER_MAP[m]})" for m in close_matches]
+        return f"ERROR: '{company_name}'에 해당하는 티커를 찾을 수 없습니다. 유사한 기업: {', '.join(suggestions)}"
 
     return f"ERROR: '{company_name}'에 해당하는 티커를 찾을 수 없습니다."

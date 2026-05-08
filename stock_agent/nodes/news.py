@@ -1,37 +1,19 @@
-"""뉴스서치 에이전트 노드"""
+"""뉴스 검색 체인 노드"""
 
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
-
-from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
-from stock_agent.prompts.news import NEWS_AGENT_PROMPT
+from stock_agent.prompts.news import NEWS_QUERY_PROMPT, NEWS_SYNTHESIS_PROMPT
 from stock_agent.tools.tavily_tools import tavily_search_news
-from stock_agent.tools.ticker_mapping import resolve_ticker
-
-# 에이전트 생성
-news_tools = [resolve_ticker, tavily_search_news]
-
-news_agent = create_agent(
-    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
-    tools=news_tools,
-    system_prompt=NEWS_AGENT_PROMPT,
-)
+from stock_agent.nodes._search_chain import run_search_chain
 
 
 def news_node(state: GraphState) -> dict:
-    """뉴스서치 에이전트를 실행합니다."""
-    question = state["question"]
-    result = news_agent.invoke(
-        {"messages": [{"role": "user", "content": question}]}
+    """뉴스 검색 체인: 쿼리 생성 → 검색 → 합성."""
+    return run_search_chain(
+        question=state["question"],
+        query_prompt=NEWS_QUERY_PROMPT,
+        synthesis_prompt=NEWS_SYNTHESIS_PROMPT,
+        search_tool=tavily_search_news,
+        agent_name="news",
+        empty_message="최근 관련 뉴스를 찾을 수 없습니다.",
+        error_key="news_failed",
     )
-    ai_messages = [m for m in result["messages"] if m.type == "ai" and m.content]
-    draft = ai_messages[-1].content if ai_messages else ""
-
-    tool_messages = [m for m in result["messages"] if m.type == "tool"]
-    source_data = "\n".join([m.content for m in tool_messages if m.content])
-
-    return {
-        "draft_answer": draft,
-        "agent_results": {"source_data": source_data, "agent": "news"},
-    }

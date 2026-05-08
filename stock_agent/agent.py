@@ -2,7 +2,8 @@
 
 흐름:
   맥락 보강 → 슈퍼바이저 → (company | news) → 검증 → 응답 → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → (glossary | general | advisor) → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → (general | advisor | chat) → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → glossary → 성공: 직통 응답 / 실패: general 폴백 (Corrective RAG)
   검증 실패 시 → 슈퍼바이저로 복귀 (최대 1회 재시도)
 """
 
@@ -16,20 +17,65 @@ from stock_agent.utils.schemas import StockResponse
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
 from stock_agent.nodes.news import news_node
-from stock_agent.nodes.glossary import glossary_node
+from stock_agent.nodes.glossary import glossary_node, GLOSSARY_FALLBACK
 from stock_agent.nodes.general import general_node
 from stock_agent.nodes.advisor import advisor_node
+from stock_agent.nodes.chat import chat_node
 from stock_agent.nodes.validator import validator_node
 from stock_agent.nodes.responder import responder_node
 
 
+def _needs_context(question: str, chat_history: list) -> bool:
+    """LLM(LIGHT_MODEL)으로 현재 질문에 이전 대화 맥락이 필요한지 판단합니다."""
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from pydantic import BaseModel, Field
+    from stock_agent.utils.constants import LIGHT_MODEL
+
+    class ContextDecision(BaseModel):
+        needs_context: bool = Field(description="이전 대화 맥락이 필요하면 true")
+
+    # 최근 대화 요약 (판단용으로 간략히)
+    recent = chat_history[:-1][-4:]  # 최근 2턴만
+    history_summary = " / ".join(
+        f"{'사용자' if m.get('role') == 'user' else 'AI'}: {m.get('content', '')[:80]}"
+        for m in recent
+    )
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", (
+            "You determine if a user's current question requires previous conversation context to understand.\n"
+            "Return true ONLY if the question contains references that cannot be understood without context:\n"
+            "- Pronouns referring to previous topics (그 회사, 이거, 그거, 아까)\n"
+            "- Follow-up requests (더 알려줘, 자세히, 다른 방법)\n"
+            "- Questions about previous AI answers (왜 추천해?, 그 이유)\n\n"
+            "Return false if the question is self-contained with a clear topic:\n"
+            "- Has a specific subject (삼성전자 분석, 공매도 위험성, ETF란?)\n"
+            "- New topic unrelated to previous conversation\n"
+            "- Complete question that makes sense on its own"
+        )),
+        ("human", "이전 대화: {history}\n\n현재 질문: {question}"),
+    ])
+
+    try:
+        chain = prompt | ChatOpenAI(model=LIGHT_MODEL, temperature=0).with_structured_output(ContextDecision)
+        result = chain.invoke({"history": history_summary, "question": question})
+        return result.needs_context
+    except Exception:
+        return True  # 판단 실패 시 안전하게 맥락 포함
+
+
 def enrich_question(state: GraphState) -> dict:
-    """이전 대화 맥락이 있으면 현재 질문 앞에 붙여서 보강합니다."""
+    """이전 대화 맥락이 필요한 경우에만 질문을 보강합니다."""
     chat_history = state.get("chat_history", [])
     question = state["question"]
 
     # 이전 메시지가 없으면 (첫 메시지) 보강 불필요
     if len(chat_history) <= 1:
+        return {}
+
+    # LLM으로 맥락 필요 여부 판단
+    if not _needs_context(question, chat_history):
         return {}
 
     # 마지막은 현재 사용자 메시지이므로 그 이전까지만 맥락으로 사용
@@ -56,14 +102,14 @@ def save_history(state: GraphState) -> dict:
         return {"chat_history": [{"role": "assistant", "content": "응답 실패"}]}
 
     parts = []
-    if final_answer.종목:
-        parts.append(f"{final_answer.종목.company_name}({final_answer.종목.ticker})")
-    if final_answer.가격:
-        parts.append(f"현재가 ${final_answer.가격.current_price}")
-    if final_answer.인사이트:
-        parts.append(final_answer.인사이트[:150])
-    if final_answer.용어설명:
-        parts.append(final_answer.용어설명[:150])
+    if final_answer.ticker_info:
+        parts.append(f"{final_answer.ticker_info.company_name}({final_answer.ticker_info.ticker})")
+    if final_answer.price:
+        parts.append(f"현재가 ${final_answer.price.current_price}")
+    if final_answer.insight:
+        parts.append(final_answer.insight[:150])
+    if final_answer.glossary:
+        parts.append(final_answer.glossary[:150])
 
     summary = ", ".join(parts) if parts else "응답 완료"
     return {"chat_history": [{"role": "assistant", "content": summary}]}
@@ -78,6 +124,7 @@ def route_by_supervisor(state: GraphState) -> str:
         "glossary": "glossary",
         "general": "general",
         "advisor": "advisor",
+        "chat": "chat",
     }
     return mapping.get(route, "general")
 
@@ -162,10 +209,10 @@ def glossary_direct_response(state: GraphState) -> dict:
 
     return {
         "final_answer": StockResponse(
-            용어설명=clean_draft,
-            출처=sources,
-            확신도="높음",
-            후속질문=followups,
+            glossary=clean_draft,
+            sources=sources,
+            confidence="높음",
+            follow_up=followups,
         )
     }
 
@@ -176,28 +223,25 @@ def general_direct_response(state: GraphState) -> dict:
     import re
 
     draft = state["draft_answer"]
-    source_data = state["agent_results"].get("source_data", "")
+    source_urls = state["agent_results"].get("source_urls", [])
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)
 
-    # 본문에서 인라인 출처 링크 제거: [출처: 매일경제](url) → 제거
+    # 본문에서 인라인 출처 링크 제거
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
-    # 혹시 [텍스트](url) 형태도 제거
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출 → 신뢰 도메인 필터 → 유효성 검사
-    urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
-    unique_urls = list(dict.fromkeys(urls))[:5]
-    trusted_urls = _filter_by_trusted_domains(unique_urls, TRUSTED_NEWS_DOMAINS)
+    # tavily 결과의 URL 직접 사용 → 신뢰 도메인 필터 → 유효성 검사
+    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_NEWS_DOMAINS)
     sources = _validate_urls(trusted_urls)
 
     return {
         "final_answer": StockResponse(
-            인사이트=clean_draft,
-            출처=sources,
-            확신도="중간",
-            후속질문=followups,
+            insight=clean_draft,
+            sources=sources,
+            confidence="중간",
+            follow_up=followups,
         )
     }
 
@@ -208,7 +252,7 @@ def advisor_direct_response(state: GraphState) -> dict:
     import re
 
     draft = state["draft_answer"]
-    source_data = state["agent_results"].get("source_data", "")
+    source_urls = state["agent_results"].get("source_urls", [])
 
     # 후속질문 추출
     draft, followups = _extract_followups(draft)
@@ -217,18 +261,31 @@ def advisor_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # source_data에서 URL 추출 → 신뢰 도메인 필터 → 유효성 검사
-    urls = re.findall(r'https?://[^\s\"\'\]\,]+', source_data)
-    unique_urls = list(dict.fromkeys(urls))[:5]
-    trusted_urls = _filter_by_trusted_domains(unique_urls, TRUSTED_ADVISOR_DOMAINS)
+    # tavily 결과의 URL 직접 사용 → 신뢰 도메인 필터 → 유효성 검사
+    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_ADVISOR_DOMAINS)
     sources = _validate_urls(trusted_urls)
 
     return {
         "final_answer": StockResponse(
-            인사이트=clean_draft,
-            출처=sources,
-            확신도="중간",
-            후속질문=followups,
+            insight=clean_draft,
+            sources=sources,
+            confidence="중간",
+            follow_up=followups,
+        )
+    }
+
+
+def chat_direct_response(state: GraphState) -> dict:
+    """chat은 대화 맥락만으로 짧게 답변하므로 Responder 스킵."""
+    draft = state["draft_answer"]
+    draft, followups = _extract_followups(draft)
+
+    return {
+        "final_answer": StockResponse(
+            insight=draft,
+            sources=[],
+            confidence="중간",
+            follow_up=followups,
         )
     }
 
@@ -248,6 +305,8 @@ def build_graph():
     workflow.add_node("general_response", general_direct_response)
     workflow.add_node("advisor", advisor_node)
     workflow.add_node("advisor_response", advisor_direct_response)
+    workflow.add_node("chat", chat_node)
+    workflow.add_node("chat_response", chat_direct_response)
     workflow.add_node("glossary_response", glossary_direct_response)
     workflow.add_node("validator", validator_node)
     workflow.add_node("responder", responder_node)
@@ -268,6 +327,7 @@ def build_graph():
             "glossary": "glossary",
             "general": "general",
             "advisor": "advisor",
+            "chat": "chat",
         },
     )
 
@@ -283,8 +343,24 @@ def build_graph():
     workflow.add_edge("advisor", "advisor_response")
     workflow.add_edge("advisor_response", "save_history")
 
-    # glossary → 직통 응답 → 히스토리 저장
-    workflow.add_edge("glossary", "glossary_response")
+    # chat → 직통 응답 → 히스토리 저장
+    workflow.add_edge("chat", "chat_response")
+    workflow.add_edge("chat_response", "save_history")
+
+    # glossary → 성공이면 직통 응답, 실패면 general 폴백 (Corrective RAG)
+    def route_glossary(state: GraphState) -> str:
+        if state.get("draft_answer") == GLOSSARY_FALLBACK:
+            return "general"
+        return "glossary_response"
+
+    workflow.add_conditional_edges(
+        "glossary",
+        route_glossary,
+        {
+            "glossary_response": "glossary_response",
+            "general": "general",
+        },
+    )
     workflow.add_edge("glossary_response", "save_history")
 
     # 검증 → 응답 or 재시도 (조건부)

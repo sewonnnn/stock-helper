@@ -1,34 +1,18 @@
-"""개인 맞춤 투자 안내 에이전트 노드"""
+"""개인 맞춤 투자 안내 체인 노드"""
 
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
-
-from stock_agent.utils.constants import DEFAULT_MODEL
 from stock_agent.utils.state import GraphState
-from stock_agent.prompts.advisor import ADVISOR_AGENT_PROMPT
+from stock_agent.prompts.advisor import ADVISOR_SYNTHESIS_PROMPT
 from stock_agent.tools.tavily_tools import tavily_search_advisor
-
-# 에이전트 생성
-advisor_agent = create_agent(
-    model=ChatOpenAI(model=DEFAULT_MODEL, temperature=0),
-    tools=[tavily_search_advisor],
-    system_prompt=ADVISOR_AGENT_PROMPT,
-)
+from stock_agent.nodes._search_chain import run_search_chain
 
 
 def advisor_node(state: GraphState) -> dict:
-    """사용자 상황에 맞는 맞춤 투자 안내를 제공합니다."""
-    question = state["question"]
-    result = advisor_agent.invoke(
-        {"messages": [{"role": "user", "content": question}]}
+    """맞춤 투자 안내 체인: 질문 그대로 검색 → 합성."""
+    return run_search_chain(
+        question=state["question"],
+        synthesis_prompt=ADVISOR_SYNTHESIS_PROMPT,
+        search_tool=tavily_search_advisor,
+        agent_name="advisor",
+        empty_message="관련 투자 가이드 정보를 찾을 수 없습니다.",
+        error_key="advisor_failed",
     )
-    ai_messages = [m for m in result["messages"] if m.type == "ai" and m.content]
-    draft = ai_messages[-1].content if ai_messages else ""
-
-    tool_messages = [m for m in result["messages"] if m.type == "tool"]
-    source_data = "\n".join([m.content for m in tool_messages if m.content])
-
-    return {
-        "draft_answer": draft,
-        "agent_results": {"source_data": source_data, "agent": "advisor"},
-    }
