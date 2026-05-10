@@ -1,10 +1,11 @@
 """메인 LangGraph StateGraph 조립
 
-흐름:
-  맥락 보강 → 슈퍼바이저 → company → 응답(LLM 구조화) → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → news → 직통 응답 → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → (general | advisor) → 직통 응답 → 히스토리 저장
-  맥락 보강 → 슈퍼바이저 → chat → 직통 응답 → 히스토리 저장
+흐름 (모든 라우트가 직통 응답 패턴 — Responder LLM 없음):
+  맥락 보강 → 슈퍼바이저 → company  → 직통 응답(yfinance 데이터 결정론적 매핑) → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → news     → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → general  → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → advisor  → 직통 응답 → 히스토리 저장
+  맥락 보강 → 슈퍼바이저 → chat     → 직통 응답 → 히스토리 저장
   맥락 보강 → 슈퍼바이저 → glossary → 성공: 직통 응답 / 실패: general 폴백 (Corrective RAG)
 """
 
@@ -14,7 +15,9 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
 from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
-from stock_agent.utils.schemas import StockResponse, NewsItem
+from stock_agent.utils.schemas import (
+    StockResponse, NewsItem, TickerInfo, PriceInfo, RangeInfo, Metric,
+)
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
 from stock_agent.nodes.news import news_node
@@ -22,7 +25,12 @@ from stock_agent.nodes.glossary import glossary_node, GLOSSARY_FALLBACK
 from stock_agent.nodes.general import general_node
 from stock_agent.nodes.advisor import advisor_node
 from stock_agent.nodes.chat import chat_node
-from stock_agent.nodes.responder import responder_node
+
+
+import time
+from stock_agent.utils.logging_config import get_logger
+
+_timing_logger = get_logger("timing")
 
 
 def _needs_context(question: str, chat_history: list) -> bool:
@@ -59,7 +67,9 @@ def _needs_context(question: str, chat_history: list) -> bool:
 
     try:
         chain = prompt | ChatOpenAI(model=LIGHT_MODEL, temperature=0).with_structured_output(ContextDecision)
+        t0 = time.perf_counter()
         result = chain.invoke({"history": history_summary, "question": question})
+        _timing_logger.info("[_needs_context LLM] %.0fms", (time.perf_counter() - t0) * 1000)
         return result.needs_context
     except Exception:
         return True  # 판단 실패 시 안전하게 맥락 포함
@@ -67,15 +77,18 @@ def _needs_context(question: str, chat_history: list) -> bool:
 
 def enrich_question(state: GraphState) -> dict:
     """이전 대화 맥락이 필요한 경우에만 질문을 보강합니다."""
+    t_start = time.perf_counter()
     chat_history = state.get("chat_history", [])
     question = state["question"]
 
     # 이전 메시지가 없으면 (첫 메시지) 보강 불필요
     if len(chat_history) <= 1:
+        _timing_logger.info("[enrich_question] %.0fms (skip: 첫 메시지)", (time.perf_counter() - t_start) * 1000)
         return {}
 
     # LLM으로 맥락 필요 여부 판단
     if not _needs_context(question, chat_history):
+        _timing_logger.info("[enrich_question] %.0fms (skip: 맥락 불필요)", (time.perf_counter() - t_start) * 1000)
         return {}
 
     # 마지막은 현재 사용자 메시지이므로 그 이전까지만 맥락으로 사용
@@ -92,6 +105,7 @@ def enrich_question(state: GraphState) -> dict:
         + "위 대화 맥락을 참고하여 현재 질문에 답변하세요. "
         + "대명사나 생략된 주어는 맥락에서 추론하세요."
     )
+    _timing_logger.info("[enrich_question] %.0fms (맥락 주입)", (time.perf_counter() - t_start) * 1000)
     return {"question": enriched}
 
 
@@ -323,6 +337,152 @@ def chat_direct_response(state: GraphState) -> dict:
     }
 
 
+def _level_threshold(value: float | None, low_max: float, high_min: float) -> str:
+    """수치 임계값으로 level 분류. low_max 미만=낮음, high_min 초과=높음, 그 사이=보통."""
+    if value is None:
+        return "정보없음"
+    if value < low_max:
+        return "낮음"
+    if value > high_min:
+        return "높음"
+    return "보통"
+
+
+def _parse_pct_str(s: str | None) -> float | None:
+    """'15.0%' → 15.0. 파싱 실패 시 None."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        return float(s.replace("%", "").strip())
+    except ValueError:
+        return None
+
+
+def company_direct_response(state: GraphState) -> dict:
+    """company는 yfinance 데이터를 결정론적으로 매핑. Responder LLM 스킵.
+    insight는 합성 LLM의 draft를 그대로 사용, 구조화 필드는 코드로 추출."""
+    draft = state["draft_answer"]
+    agent_results = state["agent_results"]
+    data = agent_results.get("data_dict") or {}
+
+    clean_draft, followups = _extract_followups(draft)
+
+    # 데이터 없음 → insight만 채워서 반환
+    if not data or "error" in data:
+        return {
+            "final_answer": StockResponse(
+                insight=clean_draft,
+                sources=["yfinance"] if data else [],
+                confidence="낮음",
+                follow_up=followups,
+            )
+        }
+
+    overview = data.get("overview", {})
+    valuation = data.get("valuation", {})
+    health = data.get("financial_health", {})
+
+    ticker_info = TickerInfo(
+        ticker=overview.get("ticker", ""),
+        company_name=overview.get("company_name", "") or overview.get("ticker", ""),
+        sector=overview.get("sector"),
+        industry=overview.get("industry"),
+    )
+
+    price = None
+    cur = overview.get("current_price")
+    prev = overview.get("previous_close")
+    if cur is not None and prev is not None:
+        price = PriceInfo(
+            current_price=cur,
+            previous_close=prev,
+            change=overview.get("change") or 0.0,
+            change_percent=overview.get("change_percent") or 0.0,
+            currency=overview.get("currency", "USD"),
+            krw_price=overview.get("krw_price"),
+            usd_krw_rate=overview.get("usd_krw_rate"),
+            market_cap=overview.get("market_cap"),
+            market_cap_tier=overview.get("market_cap_tier"),
+        )
+
+    range_52w = None
+    low = overview.get("week_52_low")
+    high = overview.get("week_52_high")
+    if low is not None and high is not None and cur is not None and high > low:
+        pos_pct = (cur - low) / (high - low) * 100
+        if pos_pct < 30:
+            interp = "1년 저점 부근"
+        elif pos_pct > 70:
+            interp = "1년 고점 부근"
+        else:
+            interp = "1년 중간 구간"
+        range_52w = RangeInfo(
+            low_52w=low, high_52w=high, current=cur,
+            position_percent=round(pos_pct, 1),
+            interpretation=interp,
+        )
+
+    metrics: list[Metric] = []
+
+    per = valuation.get("per")
+    if per is not None:
+        metrics.append(Metric(name="PER", value=f"{per:.2f}", level=_level_threshold(per, 15, 25)))
+
+    pbr = valuation.get("pbr")
+    if pbr is not None:
+        metrics.append(Metric(name="PBR", value=f"{pbr:.2f}", level=_level_threshold(pbr, 1, 3)))
+
+    eps = valuation.get("eps")
+    if eps is not None:
+        metrics.append(Metric(name="EPS", value=f"{eps:.2f}", level="정보없음"))
+
+    div = valuation.get("dividend_yield")
+    if div is not None:
+        # yfinance dividendYield 는 버전에 따라 소수(0.015) 또는 백분율(1.5)로 옴
+        div_pct = div * 100 if div < 1 else div
+        metrics.append(Metric(
+            name="배당수익률", value=f"{div_pct:.2f}%",
+            level=_level_threshold(div_pct, 1.5, 4),
+        ))
+
+    roe_val = _parse_pct_str(health.get("return_on_equity"))
+    if roe_val is not None:
+        metrics.append(Metric(
+            name="ROE", value=health["return_on_equity"],
+            level=_level_threshold(roe_val, 5, 15),
+        ))
+
+    op_val = _parse_pct_str(health.get("operating_margin"))
+    if op_val is not None:
+        metrics.append(Metric(
+            name="영업이익률", value=health["operating_margin"],
+            level=_level_threshold(op_val, 5, 20),
+        ))
+
+    growth_val = _parse_pct_str(health.get("revenue_growth_yoy"))
+    if growth_val is not None:
+        metrics.append(Metric(
+            name="매출 성장률(YoY)", value=health["revenue_growth_yoy"],
+            level=_level_threshold(growth_val, 0, 15),
+        ))
+
+    confidence = "높음" if (price and metrics) else "중간"
+
+    return {
+        "final_answer": StockResponse(
+            ticker_info=ticker_info,
+            price=price,
+            range_52w=range_52w,
+            key_metrics=metrics or None,
+            company_intro=overview.get("business_summary") or None,
+            insight=clean_draft,
+            sources=["yfinance"],
+            confidence=confidence,
+            follow_up=followups,
+        )
+    }
+
+
 def build_graph():
     """메인 그래프를 조립하여 반환합니다. MemorySaver checkpointer 포함."""
 
@@ -332,6 +492,7 @@ def build_graph():
     workflow.add_node("enrich_question", enrich_question)
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("company", company_node)
+    workflow.add_node("company_response", company_direct_response)
     workflow.add_node("news", news_node)
     workflow.add_node("news_response", news_direct_response)
     workflow.add_node("glossary", glossary_node)
@@ -342,7 +503,6 @@ def build_graph():
     workflow.add_node("chat", chat_node)
     workflow.add_node("chat_response", chat_direct_response)
     workflow.add_node("glossary_response", glossary_direct_response)
-    workflow.add_node("responder", responder_node)
     workflow.add_node("save_history", save_history)
 
     # 진입점: 맥락 보강 → 슈퍼바이저
@@ -363,8 +523,9 @@ def build_graph():
         },
     )
 
-    # company → 응답
-    workflow.add_edge("company", "responder")
+    # company → 직통 응답 → 히스토리 저장
+    workflow.add_edge("company", "company_response")
+    workflow.add_edge("company_response", "save_history")
 
     # news → 직통 응답 → 히스토리 저장
     workflow.add_edge("news", "news_response")
@@ -398,8 +559,7 @@ def build_graph():
     )
     workflow.add_edge("glossary_response", "save_history")
 
-    # 응답 → 히스토리 저장 → 종료
-    workflow.add_edge("responder", "save_history")
+    # 히스토리 저장 → 종료
     workflow.add_edge("save_history", END)
 
     serde = JsonPlusSerializer(allowed_msgpack_modules=[StockResponse])

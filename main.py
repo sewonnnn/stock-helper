@@ -4,6 +4,7 @@ import warnings
 from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 warnings.filterwarnings("ignore", category=LangChainPendingDeprecationWarning)
 
+import time
 import uuid
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,6 +27,7 @@ from stock_agent.utils.constants import (
 from stock_agent.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+_timing_logger = get_logger("timing")
 
 app = FastAPI(title="주식 멘토 AI", version="1.0.0")
 
@@ -164,6 +166,7 @@ async def chat(request: ChatRequest):
         )
 
     try:
+        t_total = time.perf_counter()
         result = graph.invoke(
             {
                 "question": request.question,
@@ -181,6 +184,7 @@ async def chat(request: ChatRequest):
         )
         final_answer = result.get("final_answer")
         route = result.get("route", "")
+        _timing_logger.info("[graph TOTAL] %.0fms (route=%s)", (time.perf_counter() - t_total) * 1000, route)
         if final_answer:
             return ChatResponse(
                 success=True, data=final_answer, route=route, thread_id=thread_id

@@ -6,6 +6,7 @@
 
 import json
 import re
+import time
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -19,6 +20,7 @@ from stock_agent.tools.ticker_mapping import TICKER_MAP
 from stock_agent.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+_timing_logger = get_logger("timing")
 
 
 # ── LLM 티커 추론 (TICKER_MAP에 없는 기업용) ──
@@ -105,16 +107,21 @@ def _try_code_resolve(question: str) -> str | None:
 def company_node(state: GraphState) -> dict:
     """기업분석 체인: 티커 해석 → 데이터 수집 → LLM 합성."""
     question = state["question"]
+    t_node = time.perf_counter()
 
     try:
         # Step 1: 코드 기반 티커 해석
+        t0 = time.perf_counter()
         ticker = _try_code_resolve(question)
+        _timing_logger.info("[company:1 code-resolve] %.1fms → %s", (time.perf_counter() - t0) * 1000, ticker or "MISS")
 
         # Step 2: 실패 시 LLM 추론 (TICKER_MAP에 없는 기업 대응)
         if not ticker:
             logger.info("코드 기반 해석 실패, LLM 추론 시작")
+            t0 = time.perf_counter()
             chain = _TICKER_PROMPT | _ticker_llm.with_structured_output(TickerResult)
             result = chain.invoke({"question": question})
+            _timing_logger.info("[company:2 ticker-LLM] %.0fms → %s", (time.perf_counter() - t0) * 1000, result.ticker)
             ticker = result.ticker
             if ticker == "UNKNOWN":
                 name = _extract_user_company_name(question)
@@ -126,14 +133,16 @@ def company_node(state: GraphState) -> dict:
         logger.info("티커 해석 완료: %s", ticker)
 
         # Step 3: yfinance 데이터 수집 (info 1회 호출)
+        t0 = time.perf_counter()
         data = get_company_data(ticker)
+        _timing_logger.info("[company:3 yfinance] %.0fms", (time.perf_counter() - t0) * 1000)
         source_json = json.dumps(data, ensure_ascii=False, default=str)
 
         # 에러 → 유효하지 않은 티커
         if "error" in data:
             return {
                 "draft_answer": f"'{ticker}' 기업 데이터를 가져올 수 없습니다. 기업명을 확인해 주세요.",
-                "agent_results": {"source_data": source_json, "agent": "company"},
+                "agent_results": {"source_data": source_json, "data_dict": data, "agent": "company"},
             }
 
         # Step 4: LLM 합성 (GPT-4o 1회)
@@ -141,14 +150,17 @@ def company_node(state: GraphState) -> dict:
             ("system", COMPANY_SYNTHESIS_PROMPT),
             ("human", "질문: {question}\n\n수집된 데이터:\n{data}"),
         ])
+        t0 = time.perf_counter()
         draft = (prompt | _synthesis_llm).invoke({
             "question": question,
             "data": source_json,
         }).content
+        _timing_logger.info("[company:4 synthesis-LLM] %.0fms", (time.perf_counter() - t0) * 1000)
+        _timing_logger.info("[company TOTAL] %.0fms", (time.perf_counter() - t_node) * 1000)
 
         return {
             "draft_answer": draft,
-            "agent_results": {"source_data": source_json, "agent": "company"},
+            "agent_results": {"source_data": source_json, "data_dict": data, "agent": "company"},
         }
 
     except Exception as e:
