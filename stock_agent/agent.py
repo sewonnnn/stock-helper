@@ -411,11 +411,20 @@ def company_direct_response(state: GraphState) -> dict:
             market_cap_tier=overview.get("market_cap_tier"),
         )
 
-    # PER만 추출 (초보자에게 핵심 지표)
+    # 핵심 지표 추출
     metrics: list[Metric] = []
     per = valuation.get("per")
     if per is not None:
-        metrics.append(Metric(name="PER", value=f"{per:.2f}", level=_level_threshold(per, 15, 25)))
+        metrics.append(Metric(name="PER", value=f"{per:.1f}", level=_level_threshold(per, 15, 25)))
+    pbr = valuation.get("pbr")
+    if pbr is not None:
+        metrics.append(Metric(name="PBR", value=f"{pbr:.2f}", level=_level_threshold(pbr, 1, 3)))
+    roe = health.get("return_on_equity")
+    if roe:
+        metrics.append(Metric(name="ROE", value=roe, level=_level_threshold(float(roe.replace("%", "")), 10, 20)))
+    div_yield = valuation.get("dividend_yield")
+    if div_yield is not None:
+        metrics.append(Metric(name="배당수익률", value=f"{div_yield * 100:.2f}%", level=_level_threshold(div_yield * 100, 1, 4)))
 
     return {
         "final_answer": StockResponse(

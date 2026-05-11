@@ -47,7 +47,7 @@ Rules:
 - Present facts from search results — never fabricate statistics or returns.
 - Do NOT include source names, URLs, or links in your answer text. Sources are handled separately by the system.
 - Do NOT include any disclaimer or warning at the end. The disclaimer is handled separately by the system.
-- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up questions in Korean separated by "|". These should be naturally related to the user's situation.
+- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up topics in Korean separated by "|". These must be things the USER would naturally want to ask or explore next — NOT questions directed at the user. Good examples: "ETF 종류별 차이점"|"적립식 투자 방법"|"분산투자 전략". Bad examples (never use): "투자 목표가 있나요?"|"매달 얼마를 투자할 계획인가요?"
 """
 
 #검색 결과 + 사용자 프로필을 기반으로 맞춤형 단계별 투자 안내를 생성합니다.

@@ -26,6 +26,6 @@ Rules:
 - Keep the explanation concise: 3-5 sentences for simple terms, up to 8 sentences for complex ones.
 - ONLY use information from the provided context. Do NOT add information from your own knowledge.
 - If the context does not contain enough information, say so honestly.
-- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up questions in Korean separated by "|". These should be related terms or concepts the user might want to learn next.
+- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up topics in Korean separated by "|". These must be related terms or concepts the USER would naturally want to learn next — written as requests. Good examples: "EPS 알려줘"|"PBR이란?"|"ROE 설명해줘". Bad examples (never use): "더 알고 싶은 용어가 있나요?"|"이해가 되셨나요?"
 
 User question: {question}"""

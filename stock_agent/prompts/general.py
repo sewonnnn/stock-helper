@@ -37,7 +37,7 @@ Rules:
 - If search results contain no useful information, briefly state that no relevant information was found.
 - Maximum 5 items if listing stocks/ETFs.
 - Do NOT include any disclaimer or warning at the end. The disclaimer is handled separately by the system.
-- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up questions in Korean separated by "|". These should be naturally related to the topic discussed.
+- At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up topics in Korean separated by "|". These must be things the USER would naturally want to ask or explore next — NOT questions directed at the user. Write them as requests, not as questions asking the user for information. Good examples: "공매도 위험성 알려줘"|"ETF vs 개별주식 비교"|"초보자 투자 시작 방법". Bad examples (never use): "더 알고 싶은 부분이 있나요?"|"어떤 종목에 관심 있으세요?"
 """
 
 #검색 결과를 초보자용 한글 답변으로 합성합니다.

@@ -82,8 +82,8 @@ details[open] .details-arrow { transform: rotate(90deg); }
 /* 프로필 */
 .profile-circle { width: 32px; height: 32px; border-radius: 50%; background: #003fb1; display: flex; align-items: center; justify-content: center; }
 
-/* 스트리밍 로딩 애니메이션 */
-#stream-loading-text { display: inline-block; transition: opacity .25s ease; }
+/* 로딩 애니메이션 */
+#loading-text { display: inline-block; transition: opacity .25s ease; }
 .stream-loading-dot::after { content: ''; animation: dots 1.2s steps(3, end) infinite; }
 @keyframes dots { 0% { content: ''; } 33% { content: '.'; } 66% { content: '..'; } 100% { content: '...'; } }
 
