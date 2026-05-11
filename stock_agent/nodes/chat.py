@@ -47,3 +47,10 @@ def chat_node(state: GraphState) -> dict:
             "draft_answer": ERROR_MESSAGES["general_failed"],
             "agent_results": {"source_data": "", "source_urls": [], "agent": "chat"},
         }
+
+
+def chat_stream(question: str):
+    """스트리밍용: _chat_llm.stream()으로 토큰 제너레이터를 반환합니다."""
+    return (_CHAT_PROMPT | _chat_llm).stream({"question": question})
+
+

@@ -244,6 +244,7 @@ async function sendQuestion(){
     let insightEl = null;          // 텍스트 스트리밍 영역
     let fullText = '';             // 전체 수신 텍스트
     let structuredData = {};       // data 이벤트로 받은 구조화 데이터
+    let receivedDone = false;      // done 이벤트 수신 여부
 
     try {
         const r = await fetch(`${API_BASE}/chat/stream`, {
@@ -298,6 +299,7 @@ async function sendQuestion(){
                         }
 
                     } else if (eventType === 'done') {
+                        receivedDone = true;
                         if (streamCardEl) {
                             finalizeStream(streamCardEl, payload, streamRoute, fullText, insightEl);
                         }
@@ -329,9 +331,19 @@ async function sendQuestion(){
                 }
             }
         }
+        // 스트림이 done 이벤트 없이 종료된 경우 — 서버 오류/연결 끊김
+        if (!receivedDone && currentThreadId === reqThreadId) {
+            if (streamCardEl) { const w = streamCardEl.closest('.msg-wrapper'); if (w) w.remove(); }
+            else if (reqLoadingId) removeMessage(reqLoadingId);
+            currentLoadingId = null;
+            addErrorMessage('응답 생성 중 연결이 끊어졌습니다. 다시 시도해 주세요.');
+        }
     } catch(e){
         clearTimeout(timeoutId);
-        if(e.name==='AbortError') return;
+        if(e.name==='AbortError') {
+            if (streamLoadingInterval) { clearInterval(streamLoadingInterval); streamLoadingInterval = null; }
+            return;
+        }
         const stillOnSameChat = (currentThreadId === reqThreadId);
         if(stillOnSameChat){
             if(streamCardEl) { const w=streamCardEl.closest('.msg-wrapper'); if(w) w.remove(); }
@@ -341,6 +353,7 @@ async function sendQuestion(){
             addErrorMessage(isNetworkErr ? '일시적으로 연결이 불안정합니다. 잠시 후 다시 시도해 주세요.' : e.message);
         }
     } finally {
+        if (streamLoadingInterval) { clearInterval(streamLoadingInterval); streamLoadingInterval = null; }
         if(currentThreadId === reqThreadId || currentThreadId === streamThreadId){
             isLoading=false; abortController=null; currentLoadingId=null; setButtonMode('send');
         }

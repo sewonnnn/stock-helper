@@ -170,3 +170,64 @@ def glossary_node(state: GraphState) -> dict:
         "draft_answer": GLOSSARY_FALLBACK,
         "agent_results": {"source_data": source_data, "agent": "glossary"},
     }
+
+
+# ── 스트리밍용 분리 함수 ──
+
+def glossary_validated(question: str) -> dict:
+    """스트리밍용: RAG 전체 파이프라인(검색→필터→생성→검증)을 실행하고 검증된 답변을 반환.
+
+    Returns:
+        {"text": str, "fallback": bool}
+    """
+    search_query = _extract_current_question(question)
+
+    # 1. Pinecone 검색
+    try:
+        docs = retriever.invoke(search_query)
+    except Exception as e:
+        logger.error("Pinecone 검색 실패: %s", e)
+        return {"text": "", "fallback": True}
+
+    if not docs:
+        return {"text": "", "fallback": True}
+
+    # 2. 관련 문서 필터링
+    relevant_docs = _filter_relevant_docs(docs, search_query)
+    if not relevant_docs:
+        return {"text": "", "fallback": True}
+
+    source_data = "\n\n".join(doc.page_content for doc in relevant_docs)
+
+    # 3. 생성 + 검증 (재시도 포함)
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            generation = generation_chain.invoke({"context": source_data, "question": question})
+        except Exception as e:
+            logger.error("용어 답변 생성 실패 (시도 %d): %s", attempt, e)
+            if attempt < MAX_RETRIES:
+                continue
+            return {"text": "", "fallback": True}
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_hal = executor.submit(hallucination_grader.invoke, {"documents": source_data, "generation": generation})
+                future_use = executor.submit(answer_grader.invoke, {"question": question, "generation": generation})
+                hal_result = future_hal.result()
+                use_result = future_use.result()
+        except Exception:
+            return {"text": generation, "fallback": False}
+
+        if not hal_result.binary_score:
+            if attempt < MAX_RETRIES:
+                continue
+            return {"text": "", "fallback": True}
+
+        if use_result.binary_score == "yes":
+            return {"text": generation, "fallback": False}
+        else:
+            if attempt < MAX_RETRIES:
+                continue
+            return {"text": "", "fallback": True}
+
+    return {"text": "", "fallback": True}

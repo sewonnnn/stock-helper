@@ -166,3 +166,62 @@ def run_search_chain(
             "draft_answer": ERROR_MESSAGES[error_key],
             "agent_results": {"source_data": "", "source_urls": [], "agent": agent_name},
         }
+
+
+# ── 스트리밍용 분리 함수 ──
+
+def search_prepare(
+    question: str,
+    query_prompt: str | None,
+    search_tool,
+    trusted_domains: list[str] | None = None,
+) -> dict:
+    """스트리밍용: 쿼리 생성 + 검색 + 신뢰도메인 필터까지 수행.
+
+    Returns:
+        {"source_data": str, "source_urls": list, "news_items": list, "error": str|None}
+    """
+    try:
+        if query_prompt:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", query_prompt),
+                ("human", "{question}"),
+            ])
+            query_chain = prompt | _query_llm.with_structured_output(SearchQuery)
+            search_query = query_chain.invoke({"question": question}).query
+        else:
+            search_query = question
+
+        raw_results = search_tool.invoke(search_query)
+        items = _parse_tavily_results(raw_results)
+        items = _filter_trusted_items(items, trusted_domains)
+
+        if not items:
+            return {"source_data": "", "source_urls": [], "news_items": [], "error": None, "empty": True}
+
+        source_data, source_urls = _items_to_source_data(items)
+        news_items = [{"title": item["title"], "url": item["url"]} for item in items]
+
+        return {"source_data": source_data, "source_urls": source_urls, "news_items": news_items, "error": None, "empty": False}
+
+    except Exception as e:
+        logger.error("search_prepare 실패: %s", e, exc_info=True)
+        return {"source_data": "", "source_urls": [], "news_items": [], "error": str(e), "empty": True}
+
+
+def search_stream_synthesis(question: str, source_data: str, synthesis_prompt: str):
+    """스트리밍용: _synthesis_llm.stream()으로 토큰 제너레이터를 반환합니다."""
+    synth_prompt = ChatPromptTemplate.from_messages([
+        ("system", synthesis_prompt),
+        ("human", "질문: {question}\n\n검색 결과:\n{data}"),
+    ])
+    return (synth_prompt | _synthesis_llm).stream({"question": question, "data": source_data})
+
+
+def search_stream_fallback(question: str, synthesis_prompt: str):
+    """스트리밍용: 검색 결과 없을 때 LLM 자체 지식으로 답변 스트리밍."""
+    synth_prompt = ChatPromptTemplate.from_messages([
+        ("system", synthesis_prompt),
+        ("human", "질문: {question}\n\n검색 결과:\n(검색 결과가 없습니다. 당신의 지식을 바탕으로 답변해 주세요.)"),
+    ])
+    return (synth_prompt | _synthesis_llm).stream({"question": question, "data": ""})
