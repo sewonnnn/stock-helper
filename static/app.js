@@ -386,7 +386,14 @@ function addStreamCard(route) {
 }
 
 function renderStreamText(el, fullText, route) {
-    let display = fullText.replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '').replace(/(?:company_intro|회사소개)\s*[:：].*/gi, '').trimEnd();
+    let display = fullText
+        .replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '')
+        .replace(/(?:company_intro|회사소개)\s*[:：].*/gi, '')
+        .replace(/\s*\[출처[^\]]*\]\(https?:\/\/[^\)]+\)/g, '')
+        .replace(/\s*\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '')
+        .replace(/\*\*/g, '')
+        .trimEnd();
+    el.style.whiteSpace = 'pre-wrap';
     el.textContent = display;
     const container = document.getElementById('chatContainer');
     container.scrollTop = container.scrollHeight;
@@ -447,6 +454,7 @@ function finalizeStreamCard(cardEl, data, route) {
             textEl.style.transition = 'opacity 0.2s ease';
             textEl.style.opacity = '0';
             setTimeout(() => {
+                textEl.style.whiteSpace = '';
                 textEl.innerHTML = newHtml;
                 textEl.style.opacity = '1';
             }, 200);
