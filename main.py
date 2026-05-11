@@ -265,14 +265,24 @@ async def chat(request: ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-# 정적 파일 마운트
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# 정적 파일 — /static/ 경로와 루트 경로 모두 서빙 (Vercel·로컬 호환)
+app.mount("/static", StaticFiles(directory="static"), name="static_sub")
 
 
 @app.get("/")
 async def root():
     """프론트엔드 HTML 반환"""
     return FileResponse("static/index.html")
+
+
+@app.get("/{filename:path}")
+async def static_root(filename: str):
+    """루트 경로에서도 정적 파일 서빙 (./style.css → /style.css)"""
+    import os
+    filepath = os.path.join("static", filename)
+    if os.path.isfile(filepath):
+        return FileResponse(filepath)
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
 if __name__ == "__main__":

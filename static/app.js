@@ -277,7 +277,7 @@ async function sendQuestion(){
                         // 로딩 말풍선은 유지 — 카드는 아직 만들지 않음
 
                     } else if (eventType === 'data') {
-                        // company 주가 데이터 도착 → 로딩 제거, 카드 생성 + 주가 표시
+                        // company 주가 데이터 도착 → 로딩 제거, 카드 생성 + 주가·회사소개·후속질문 표시
                         if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
                         if (!cardEl) {
                             cardEl = addStreamCard(streamRoute);
@@ -285,6 +285,14 @@ async function sendQuestion(){
                         }
                         const topEl = cardEl.querySelector('#stream-data-top');
                         if (topEl) topEl.innerHTML = renderPriceSection(payload);
+                        // 회사소개 + 후속질문 미리 렌더링 (LLM 합성 전)
+                        const btmEl = cardEl.querySelector('#stream-data-bottom');
+                        if (btmEl) {
+                            let bh = '';
+                            if (payload.company_intro) bh += `<details class="resp-section"><summary style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#4b5563;cursor:pointer;user-select:none"><span class="details-arrow">▶</span>회사 소개</summary><div style="margin-top:8px" class="resp-text">${fmtSent(payload.company_intro)}</div></details>`;
+                            if (Array.isArray(payload.follow_up) && payload.follow_up.length) bh += `<div class="followup-chips">${payload.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
+                            if (bh) btmEl.innerHTML = bh;
+                        }
                         const container = document.getElementById('chatContainer');
                         container.scrollTop = container.scrollHeight;
 
@@ -394,6 +402,7 @@ function renderStreamText(el, fullText, route) {
         .replace(/\s*\[출처[^\]]*\]\(https?:\/\/[^\)]+\)/g, '')
         .replace(/\s*\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '')
         .replace(/\*\*/g, '')
+        .replace(/\n\s*(?:follow(?:_(?:up)?)?|후속(?:질문)?|company(?:_(?:intro)?)?|회사(?:소개)?)\s*$/gi, '')
         .trimEnd();
     el.style.whiteSpace = 'pre-wrap';
     if (el.firstChild && el.firstChild.nodeType === 3) {
@@ -469,7 +478,7 @@ function finalizeStreamCard(cardEl, data, route) {
         if (sl2.length) bottomHtml += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #f3f4f6;font-size:11px;color:#9ca3af">출처: ${sl2.join(' · ')}</div>`;
     }
     if (Array.isArray(data.follow_up) && data.follow_up.length) {
-        bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
+        bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>{const c=q.replace(/^["'""'']+|["'""'']+$/g,'');return `<button class="followup-chip" onclick="askQuestion('${esc(c)}')">${esc(c)}</button>`}).join('')}</div>`;
     }
 
     // 모든 DOM 변경을 단일 프레임에 실행 (repaint 1회)
@@ -477,24 +486,20 @@ function finalizeStreamCard(cardEl, data, route) {
         const sl = document.getElementById('stream-loading');
         if (sl) sl.remove();
         if (topEl && topHtml) topEl.innerHTML = topHtml;
-        if (textEl && formattedText) {
-            textEl.style.whiteSpace = '';
-            textEl.innerHTML = formattedText;
+        if (textEl) {
+            const streamed = textEl.textContent.trim();
+            if (!streamed && formattedText) {
+                // 스트리밍된 텍스트 없음 (glossary 등) → 풀 렌더링
+                textEl.style.whiteSpace = '';
+                textEl.innerHTML = formattedText;
+            }
+            // 스트리밍된 텍스트 존재 → DOM 건드리지 않음 (깜빡임 완전 제거)
         }
         if (bottomEl && bottomHtml) bottomEl.innerHTML = bottomHtml;
-
-        if (!glossaryHintShown && formattedText.includes('term-tooltip')) {
-            cardEl.insertAdjacentHTML('afterbegin', `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`);
-            glossaryHintShown = true;
-        }
 
         const container = document.getElementById('chatContainer');
         container.scrollTop = container.scrollHeight;
     });
-
-    // 스크롤
-    const container = document.getElementById('chatContainer');
-    container.scrollTop = container.scrollHeight;
 }
 
 function renderPriceSection(data) {
@@ -671,7 +676,7 @@ function renderResponse(data,route){
 
     // 후속 질문 버튼
     if(Array.isArray(data.follow_up)&&data.follow_up.length){
-        h+=`<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
+        h+=`<div class="followup-chips">${data.follow_up.map(q=>{const c=q.replace(/^["'""'']+|["'""'']+$/g,'');return `<button class="followup-chip" onclick="askQuestion('${esc(c)}')">${esc(c)}</button>`}).join('')}</div>`;
     }
     return highlightTerms(h);
 }

@@ -1,5 +1,5 @@
 # 모델 설정 — 모델 분리 적용
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-4o-mini"
 LIGHT_MODEL = "gpt-4o-mini"
 VALIDATOR_MODEL = "gpt-4o-mini"
 EMBEDDING_MODEL = "text-embedding-3-small"

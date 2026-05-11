@@ -9,7 +9,7 @@ from stock_agent.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def get_retriever(k: int = 3):
+def get_retriever(k: int = 1):
     """Pinecone 벡터 스토어에서 retriever를 생성합니다."""
     embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
     vectorstore = PineconeVectorStore(

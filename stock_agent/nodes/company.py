@@ -147,7 +147,7 @@ def company_node(state: GraphState) -> dict:
                 "agent_results": {"source_data": source_json, "data_dict": data, "agent": "company"},
             }
 
-        # Step 3.5: 주가 데이터를 먼저 클라이언트에 전송 (LLM 합성 전)
+        # Step 3.5: 주가 데이터 + 회사소개 + 후속질문을 먼저 클라이언트에 전송 (LLM 합성 전)
         from stock_agent.agent import extract_company_price_data
         price_data = extract_company_price_data(data)
         if price_data:
@@ -159,6 +159,15 @@ def company_node(state: GraphState) -> dict:
                 event_payload["price"] = price_data["price"].model_dump(exclude_none=True)
             if price_data.get("key_metrics"):
                 event_payload["key_metrics"] = [m.model_dump() for m in price_data["key_metrics"]]
+
+            # 후속질문: 회사명 기반 기본 질문
+            short_name = data["overview"].get("company_name", "").split("(")[0].strip() or ticker
+            event_payload["follow_up"] = [
+                f"{short_name} 최근 뉴스",
+                f"{short_name} 배당금 정보",
+                f"{short_name} 경쟁사 비교",
+            ]
+
             dispatch_custom_event("company_data", event_payload)
 
         # Step 4: LLM 합성 (GPT-4o 1회, .stream()으로 astream_events 토큰 캡처)
