@@ -1,8 +1,9 @@
 """검색 기반 체인 노드 공통 로직
-
 news, general, advisor 노드가 공유하는 흐름:
-(선택) 검색 쿼리 생성 (LIGHT_MODEL) → tavily 검색 → LLM 합성 (DEFAULT_MODEL)
+(선택) 검색 쿼리 생성 (LIGHT_MODEL) → tavily 검색 → 신뢰 도메인 필터 → LLM 합성 (DEFAULT_MODEL)
 """
+
+from urllib.parse import urlparse
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -54,6 +55,21 @@ def _items_to_source_data(items: list[dict]) -> tuple[str, list[str]]:
     return source_data, urls
 
 
+def _filter_trusted_items(items: list[dict], trusted_domains: list[str] | None) -> list[dict]:
+    """신뢰 도메인에 속하는 검색 결과만 필터링합니다. trusted_domains가 None이면 전체 반환."""
+    if not trusted_domains:
+        return items
+    filtered = []
+    for item in items:
+        try:
+            host = urlparse(item["url"]).hostname or ""
+            if any(host == d or host.endswith("." + d) for d in trusted_domains):
+                filtered.append(item)
+        except Exception:
+            continue
+    return filtered
+
+
 def run_search_chain(
     question: str,
     synthesis_prompt: str,
@@ -63,6 +79,7 @@ def run_search_chain(
     error_key: str,
     query_prompt: str | None = None,
     fallback_on_empty: bool = False,
+    trusted_domains: list[str] | None = None,
 ) -> dict:
     """검색 기반 체인을 실행합니다.
 
@@ -75,6 +92,7 @@ def run_search_chain(
         error_key: ERROR_MESSAGES 딕셔너리 키
         query_prompt: 검색 쿼리 생성용 시스템 프롬프트 (None이면 질문을 그대로 검색)
         fallback_on_empty: True이면 검색 결과 없을 때 LLM 자체 지식으로 답변 생성
+        trusted_domains: 신뢰 도메인 목록 (LLM에 넘기기 전 필터링)
     """
     try:
         # Step 1: 검색 쿼리 결정
@@ -90,9 +108,11 @@ def run_search_chain(
 
         logger.info("[%s] 검색 쿼리: %s", agent_name, search_query)
 
-        # Step 2: Tavily 검색
+        # Step 2: Tavily 검색 → 신뢰 도메인 필터링
         raw_results = search_tool.invoke(search_query)
         items = _parse_tavily_results(raw_results)
+        items = _filter_trusted_items(items, trusted_domains)
+        logger.info("[%s] 신뢰 도메인 필터 후 결과: %d건", agent_name, len(items))
 
         if not items:
             if fallback_on_empty:

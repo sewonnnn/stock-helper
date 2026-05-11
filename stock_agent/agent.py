@@ -185,14 +185,25 @@ def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
 
 
 def _extract_followups(text: str) -> tuple[str, list[str]]:
-    """텍스트 끝에서 '후속질문: A|B|C' 패턴을 추출하고 본문과 분리합니다."""
+    """텍스트 끝에서 'follow_up: A|B|C' 패턴을 추출하고 본문과 분리합니다."""
     import re
-    match = re.search(r'후속질문\s*[:：]\s*(.+)$', text, re.MULTILINE)
+    match = re.search(r'(?:follow_up|후속질문)\s*[:：]\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
     if not match:
         return text, []
     followups = [q.strip() for q in match.group(1).split('|') if q.strip()][:3]
     clean_text = text[:match.start()].rstrip()
     return clean_text, followups
+
+
+def _extract_company_intro(text: str) -> tuple[str, str | None]:
+    """텍스트에서 'company_intro: ...' 패턴을 추출하고 본문과 분리합니다."""
+    import re
+    match = re.search(r'(?:company_intro|회사소개)\s*[:：]\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return text, None
+    intro = match.group(1).strip()
+    clean_text = text[:match.start()].rstrip()
+    return clean_text, intro
 
 
 def glossary_direct_response(state: GraphState) -> dict:
@@ -279,15 +290,13 @@ def general_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # tavily 결과의 URL 직접 사용 → 신뢰 도메인 필터 → 유효성 검사
-    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_NEWS_DOMAINS)
-    sources = _validate_urls(trusted_urls)
+    # 검색 단계에서 이미 신뢰 도메인 필터 완료 → URL 유효성만 검사
+    sources = _validate_urls(source_urls)
 
     return {
         "final_answer": StockResponse(
             insight=clean_draft,
             sources=sources,
-            confidence="중간",
             follow_up=followups,
         )
     }
@@ -308,15 +317,13 @@ def advisor_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # tavily 결과의 URL 직접 사용 → 신뢰 도메인 필터 → 유효성 검사
-    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_ADVISOR_DOMAINS)
-    sources = _validate_urls(trusted_urls)
+    # 검색 단계에서 이미 신뢰 도메인 필터 완료 → URL 유효성만 검사
+    sources = _validate_urls(source_urls)
 
     return {
         "final_answer": StockResponse(
             insight=clean_draft,
             sources=sources,
-            confidence="중간",
             follow_up=followups,
         )
     }
@@ -366,14 +373,13 @@ def company_direct_response(state: GraphState) -> dict:
     data = agent_results.get("data_dict") or {}
 
     clean_draft, followups = _extract_followups(draft)
+    clean_draft, company_intro_kr = _extract_company_intro(clean_draft)
 
     # 데이터 없음 → insight만 채워서 반환
     if not data or "error" in data:
         return {
             "final_answer": StockResponse(
                 insight=clean_draft,
-                sources=["yfinance"] if data else [],
-                confidence="낮음",
                 follow_up=followups,
             )
         }
@@ -405,79 +411,19 @@ def company_direct_response(state: GraphState) -> dict:
             market_cap_tier=overview.get("market_cap_tier"),
         )
 
-    range_52w = None
-    low = overview.get("week_52_low")
-    high = overview.get("week_52_high")
-    if low is not None and high is not None and cur is not None and high > low:
-        pos_pct = (cur - low) / (high - low) * 100
-        if pos_pct < 30:
-            interp = "1년 저점 부근"
-        elif pos_pct > 70:
-            interp = "1년 고점 부근"
-        else:
-            interp = "1년 중간 구간"
-        range_52w = RangeInfo(
-            low_52w=low, high_52w=high, current=cur,
-            position_percent=round(pos_pct, 1),
-            interpretation=interp,
-        )
-
+    # PER만 추출 (초보자에게 핵심 지표)
     metrics: list[Metric] = []
-
     per = valuation.get("per")
     if per is not None:
         metrics.append(Metric(name="PER", value=f"{per:.2f}", level=_level_threshold(per, 15, 25)))
-
-    pbr = valuation.get("pbr")
-    if pbr is not None:
-        metrics.append(Metric(name="PBR", value=f"{pbr:.2f}", level=_level_threshold(pbr, 1, 3)))
-
-    eps = valuation.get("eps")
-    if eps is not None:
-        metrics.append(Metric(name="EPS", value=f"{eps:.2f}", level="정보없음"))
-
-    div = valuation.get("dividend_yield")
-    if div is not None:
-        # yfinance dividendYield 는 버전에 따라 소수(0.015) 또는 백분율(1.5)로 옴
-        div_pct = div * 100 if div < 1 else div
-        metrics.append(Metric(
-            name="배당수익률", value=f"{div_pct:.2f}%",
-            level=_level_threshold(div_pct, 1.5, 4),
-        ))
-
-    roe_val = _parse_pct_str(health.get("return_on_equity"))
-    if roe_val is not None:
-        metrics.append(Metric(
-            name="ROE", value=health["return_on_equity"],
-            level=_level_threshold(roe_val, 5, 15),
-        ))
-
-    op_val = _parse_pct_str(health.get("operating_margin"))
-    if op_val is not None:
-        metrics.append(Metric(
-            name="영업이익률", value=health["operating_margin"],
-            level=_level_threshold(op_val, 5, 20),
-        ))
-
-    growth_val = _parse_pct_str(health.get("revenue_growth_yoy"))
-    if growth_val is not None:
-        metrics.append(Metric(
-            name="매출 성장률(YoY)", value=health["revenue_growth_yoy"],
-            level=_level_threshold(growth_val, 0, 15),
-        ))
-
-    confidence = "높음" if (price and metrics) else "중간"
 
     return {
         "final_answer": StockResponse(
             ticker_info=ticker_info,
             price=price,
-            range_52w=range_52w,
             key_metrics=metrics or None,
-            company_intro=overview.get("business_summary") or None,
+            company_intro=company_intro_kr,
             insight=clean_draft,
-            sources=["yfinance"],
-            confidence=confidence,
             follow_up=followups,
         )
     }

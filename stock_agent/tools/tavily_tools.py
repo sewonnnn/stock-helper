@@ -4,7 +4,7 @@ from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DO
 
 # 뉴스 검색 — 최근 1주일 이내
 tavily_search_news = TavilySearch(
-    max_results=5,
+    max_results=4,
     include_domains=TRUSTED_NEWS_DOMAINS,
     exclude_domains=EXCLUDED_DOMAINS,
     time_range="week",
