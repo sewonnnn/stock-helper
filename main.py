@@ -35,8 +35,8 @@ app = FastAPI(title="주식 멘토 AI", version="1.0.0")
 # CORS 설정 — Vercel 프론트엔드에서 Render 백엔드 호출 허용
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"https://stock-helper.*\.vercel\.app",
     allow_origins=[
-        "https://stock-helper-henna.vercel.app",
         "http://localhost:8000",
     ],
     allow_credentials=True,
