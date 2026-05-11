@@ -172,7 +172,6 @@ async def chat(request: ChatRequest):
     async def event_generator():
         route = None
         final_answer = None
-        last_yield_time = asyncio.get_event_loop().time()
 
         input_state = {
             "question": request.question,
@@ -188,13 +187,24 @@ async def chat(request: ChatRequest):
         }
         config = {"configurable": {"thread_id": thread_id}}
 
+        next_task = None
         try:
-            async for event in graph.astream_events(input_state, config, version="v2"):
-                # keep-alive: 15초마다 heartbeat 전송하여 Render 타임아웃 방지
-                now = asyncio.get_event_loop().time()
-                if now - last_yield_time > 15:
+            aiter = graph.astream_events(input_state, config, version="v2").__aiter__()
+            next_task = asyncio.ensure_future(aiter.__anext__())
+
+            while True:
+                # 10초마다 heartbeat — 이벤트 흐름과 무관하게 전송
+                done, _ = await asyncio.wait({next_task}, timeout=10)
+                if not done:
                     yield ": heartbeat\n\n"
-                    last_yield_time = now
+                    continue
+
+                try:
+                    event = next_task.result()
+                except StopAsyncIteration:
+                    break
+
+                next_task = asyncio.ensure_future(aiter.__anext__())
 
                 kind = event["event"]
                 metadata = event.get("metadata", {})
@@ -211,12 +221,10 @@ async def chat(request: ChatRequest):
                         route = output.route
                     if route:
                         yield _sse_event("meta", {"route": route, "thread_id": thread_id})
-                        last_yield_time = asyncio.get_event_loop().time()
 
                 # company 주가 데이터 선행 전송
                 elif kind == "on_custom_event" and event.get("name") == "company_data":
                     yield _sse_event("data", event.get("data", {}))
-                    last_yield_time = asyncio.get_event_loop().time()
 
                 # 합성 LLM 토큰 스트리밍 (synthesis 태그가 있는 호출만)
                 elif kind == "on_chat_model_stream" and node_name in _STREAMING_NODES:
@@ -228,7 +236,6 @@ async def chat(request: ChatRequest):
                         token = chunk_data.content if hasattr(chunk_data, 'content') else ""
                         if token:
                             yield _sse_event("chunk", {"text": token})
-                            last_yield_time = asyncio.get_event_loop().time()
 
                 # response 노드 완료 시 final_answer 캡처
                 elif kind == "on_chain_end" and node_name.endswith("_response"):
@@ -251,6 +258,9 @@ async def chat(request: ChatRequest):
                 yield _sse_event("error", {"message": ERROR_MESSAGES["server_error"]})
             except Exception:
                 pass
+        finally:
+            if next_task and not next_task.done():
+                next_task.cancel()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
