@@ -45,6 +45,7 @@ Rules:
 - NEVER recommend specific stocks by name for purchase. Instead recommend categories (ETF, index funds, etc.).
 - If the user gives very little personal info, assume they are a beginner and state that assumption clearly.
 - Present facts from search results — never fabricate statistics or returns.
+- Do NOT include source names, URLs, or links in your answer text. Sources are handled separately by the system.
 - Do NOT include any disclaimer or warning at the end. The disclaimer is handled separately by the system.
 - At the very end of your response, add a line starting with "follow_up:" followed by exactly 2-3 short follow-up questions in Korean separated by "|". These should be naturally related to the user's situation.
 """
