@@ -411,103 +411,86 @@ function renderStreamText(el, fullText, route) {
 }
 
 function finalizeStreamCard(cardEl, data, route) {
-    const sl = document.getElementById('stream-loading');
-    if (sl) sl.remove();
-
+    // HTML 준비 (동기 — DOM 변경 없음)
     const topEl = cardEl.querySelector('#stream-data-top');
     const bottomEl = cardEl.querySelector('#stream-data-bottom');
     const textEl = cardEl.querySelector('#stream-text');
+    const skipTop = topEl && topEl.innerHTML && data.price;
 
-    // ── 상단: 주가 데이터 + 핵심 지표 (company/news 라우트) ──
     let topHtml = '';
-    if (route === 'company' && data.price) topHtml += `<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
-
-    if (data.ticker_info || data.price) {
-        topHtml += `<div class="resp-section">`;
-        if (data.ticker_info) topHtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.ticker_info.company_name)}</span><span style="font-size:13px;color:#6b7280">${esc(data.ticker_info.ticker)}</span></div>`;
-        if (data.price) {
-            const cp=data.price.current_price, chg=data.price.change??0, chgPct=data.price.change_percent??0;
-            const up=chg>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
-            let pd='-';
-            if(cp!=null){
-                if(data.price.currency==='KRW') pd=`${Math.round(cp).toLocaleString()}원`;
-                else if(data.price.krw_price) pd=`${Math.round(data.price.krw_price).toLocaleString()}원 <span style="font-size:14px;color:#6b7280">($${cp.toLocaleString()})</span>`;
-                else pd=`$${cp.toLocaleString()}`;
+    if (!skipTop) {
+        if (route === 'company' && data.price) topHtml += `<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
+        if (data.ticker_info || data.price) {
+            topHtml += `<div class="resp-section">`;
+            if (data.ticker_info) topHtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.ticker_info.company_name)}</span><span style="font-size:13px;color:#6b7280">${esc(data.ticker_info.ticker)}</span></div>`;
+            if (data.price) {
+                const cp=data.price.current_price, chg=data.price.change??0, chgPct=data.price.change_percent??0;
+                const up=chg>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
+                let pd='-';
+                if(cp!=null){
+                    if(data.price.currency==='KRW') pd=`${Math.round(cp).toLocaleString()}원`;
+                    else if(data.price.krw_price) pd=`${Math.round(data.price.krw_price).toLocaleString()}원 <span style="font-size:14px;color:#6b7280">($${cp.toLocaleString()})</span>`;
+                    else pd=`$${cp.toLocaleString()}`;
+                }
+                topHtml += `<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:700;color:#1f2937">${pd}</span><span style="color:${clr};font-weight:600;font-size:14px">${arr} ${Math.abs(chgPct).toFixed(2)}%</span></div>`;
+                if(data.price.market_cap||data.price.market_cap_tier){
+                    let capHtml='';
+                    if(data.price.market_cap) capHtml+=`<span style="font-size:13px;color:#6b7280">시가총액 ${esc(data.price.market_cap)}</span>`;
+                    if(data.price.market_cap_tier) capHtml+=`<span style="padding:1px 6px;background:#f3f4f6;border-radius:4px;font-size:11px;color:#6b7280;margin-left:6px">${esc(data.price.market_cap_tier)}</span>`;
+                    topHtml+=`<div style="margin-top:4px">${capHtml}</div>`;
+                }
             }
-            topHtml += `<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:700;color:#1f2937">${pd}</span><span style="color:${clr};font-weight:600;font-size:14px">${arr} ${Math.abs(chgPct).toFixed(2)}%</span></div>`;
-            if(data.price.market_cap||data.price.market_cap_tier){
-                let capHtml='';
-                if(data.price.market_cap) capHtml+=`<span style="font-size:13px;color:#6b7280">시가총액 ${esc(data.price.market_cap)}</span>`;
-                if(data.price.market_cap_tier) capHtml+=`<span style="padding:1px 6px;background:#f3f4f6;border-radius:4px;font-size:11px;color:#6b7280;margin-left:6px">${esc(data.price.market_cap_tier)}</span>`;
-                topHtml+=`<div style="margin-top:4px">${capHtml}</div>`;
-            }
+            topHtml += `</div>`;
         }
-        topHtml += `</div>`;
+        if (Array.isArray(data.key_metrics) && data.key_metrics.length) {
+            const items=data.key_metrics.map(m=>{
+                const lc=m.level==='높음'?'#dc2626':m.level==='낮음'?'#059669':'#6b7280';
+                return `<span style="font-size:13px;color:#6b7280">${esc(m.name)} ${esc(m.value)}</span><span style="font-size:12px;color:${lc};margin-left:2px">${esc(m.level)}</span>`;
+            }).join('<span style="color:#e5e7eb;margin:0 8px">|</span>');
+            topHtml += `<div class="resp-section" style="padding:8px 0">${items}</div>`;
+        }
     }
 
-    if (Array.isArray(data.key_metrics) && data.key_metrics.length) {
-        const items=data.key_metrics.map(m=>{
-            const lc=m.level==='높음'?'#dc2626':m.level==='낮음'?'#059669':'#6b7280';
-            return `<span style="font-size:13px;color:#6b7280">${esc(m.name)} ${esc(m.value)}</span><span style="font-size:12px;color:${lc};margin-left:2px">${esc(m.level)}</span>`;
-        }).join('<span style="color:#e5e7eb;margin:0 8px">|</span>');
-        topHtml += `<div class="resp-section" style="padding:8px 0">${items}</div>`;
-    }
-
-    // data 이벤트로 이미 렌더링된 경우(company) 상단 중복 교체 스킵
-    if (topEl && (!topEl.innerHTML || !data.price)) topEl.innerHTML = topHtml;
-
-    // 텍스트 + 하단을 하나의 프레임에 배칭하여 repaint 1회로 통합
     const finalText = data.insight || data.glossary || '';
     const formattedText = finalText
         ? highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText))
         : '';
 
-    // ── 하단: 뉴스, 회사소개, 면책, 출처, 후속질문 ──
     let bottomHtml = '';
-
-    // 뉴스 카드 (news 라우트)
     if (Array.isArray(data.news) && data.news.length && route === 'news') {
         const nc = data.news.map(n => `<div class="news-card"><a href="${esc(n.url)}" target="_blank" class="news-title">${esc(n.title)}</a><div class="news-meta">${esc(n.source)}${n.published_at?' · '+esc(n.published_at):''}</div>${n.summary?`<div class="news-summary">${esc(n.summary)}</div>`:''}</div>`).join('');
         bottomHtml += `<div class="resp-section"><div class="resp-label">최근 뉴스</div>${nc}</div>`;
     }
-
-    // 회사 소개
     if (data.company_intro) bottomHtml += `<details class="resp-section"><summary style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#4b5563;cursor:pointer;user-select:none"><span class="details-arrow">▶</span>회사 소개</summary><div style="margin-top:8px" class="resp-text">${fmtSent(data.company_intro)}</div></details>`;
-
-    // 면책 문구
     if (route === 'advisor' || route === 'general') bottomHtml += `<div style="font-size:13px;color:#003fb1;margin-bottom:16px">참고용 안내이며, 실제 투자는 본인의 판단으로 결정해 주세요.</div>`;
-
-    // 출처
     if (Array.isArray(data.sources) && data.sources.filter(s=>s&&s.startsWith('http')).length) {
         const validSources = data.sources.filter(s=>s&&s.startsWith('http'));
-        const sl = validSources.map(s=>{try{return `<a href="${esc(s)}" target="_blank" style="font-size:12px;color:#6b7280;text-decoration:underline">${esc(new URL(s).hostname.replace('www.',''))}</a>`}catch(e){return ''}}).filter(Boolean);
-        if (sl.length) bottomHtml += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #f3f4f6;font-size:11px;color:#9ca3af">출처: ${sl.join(' · ')}</div>`;
+        const sl2 = validSources.map(s=>{try{return `<a href="${esc(s)}" target="_blank" style="font-size:12px;color:#6b7280;text-decoration:underline">${esc(new URL(s).hostname.replace('www.',''))}</a>`}catch(e){return ''}}).filter(Boolean);
+        if (sl2.length) bottomHtml += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #f3f4f6;font-size:11px;color:#9ca3af">출처: ${sl2.join(' · ')}</div>`;
     }
-
-    // 후속 질문
     if (Array.isArray(data.follow_up) && data.follow_up.length) {
         bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
     }
 
-    // 텍스트 + 하단을 한 프레임에 반영 (repaint 1회)
+    // 모든 DOM 변경을 단일 프레임에 실행 (repaint 1회)
     requestAnimationFrame(() => {
+        const sl = document.getElementById('stream-loading');
+        if (sl) sl.remove();
+        if (topEl && topHtml) topEl.innerHTML = topHtml;
         if (textEl && formattedText) {
             textEl.style.whiteSpace = '';
             textEl.innerHTML = formattedText;
         }
-        if (bottomEl && bottomHtml) {
-            bottomEl.innerHTML = bottomHtml;
+        if (bottomEl && bottomHtml) bottomEl.innerHTML = bottomHtml;
+
+        if (!glossaryHintShown && formattedText.includes('term-tooltip')) {
+            cardEl.insertAdjacentHTML('afterbegin', `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`);
+            glossaryHintShown = true;
         }
+
         const container = document.getElementById('chatContainer');
         container.scrollTop = container.scrollHeight;
     });
-
-    // 용어 힌트
-    if (!glossaryHintShown && formattedText.includes('term-tooltip')) {
-        const hintHtml = `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`;
-        cardEl.insertAdjacentHTML('afterbegin', hintHtml);
-        glossaryHintShown = true;
-    }
 
     // 스크롤
     const container = document.getElementById('chatContainer');
