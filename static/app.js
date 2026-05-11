@@ -444,20 +444,11 @@ function finalizeStreamCard(cardEl, data, route) {
 
     if (topEl) topEl.innerHTML = topHtml;
 
-    // ── 텍스트 영역: 최종 텍스트로 갱신 + highlightTerms 적용 (fade 전환) ──
+    // ── 텍스트 영역: 마크다운 포맷팅 적용 (내용 동일, 서식만 변환) ──
     if (textEl) {
         let finalText = data.insight || data.glossary || '';
-        const newHtml = finalText
-            ? highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText))
-            : (textEl.innerHTML ? highlightTerms(textEl.innerHTML) : '');
-        if (newHtml) {
-            textEl.style.transition = 'opacity 0.2s ease';
-            textEl.style.opacity = '0';
-            setTimeout(() => {
-                textEl.style.whiteSpace = '';
-                textEl.innerHTML = newHtml;
-                textEl.style.opacity = '1';
-            }, 200);
+        if (finalText) {
+            textEl.innerHTML = highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText));
         }
     }
 
