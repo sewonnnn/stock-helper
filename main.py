@@ -5,6 +5,7 @@ from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 warnings.filterwarnings("ignore", category=LangChainPendingDeprecationWarning)
 warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
+import asyncio
 import json
 import uuid
 from dotenv import load_dotenv
@@ -171,6 +172,7 @@ async def chat(request: ChatRequest):
     async def event_generator():
         route = None
         final_answer = None
+        last_yield_time = asyncio.get_event_loop().time()
 
         input_state = {
             "question": request.question,
@@ -188,6 +190,12 @@ async def chat(request: ChatRequest):
 
         try:
             async for event in graph.astream_events(input_state, config, version="v2"):
+                # keep-alive: 15초마다 heartbeat 전송하여 Render 타임아웃 방지
+                now = asyncio.get_event_loop().time()
+                if now - last_yield_time > 15:
+                    yield ": heartbeat\n\n"
+                    last_yield_time = now
+
                 kind = event["event"]
                 metadata = event.get("metadata", {})
                 node_name = metadata.get("langgraph_node", "")
@@ -203,10 +211,12 @@ async def chat(request: ChatRequest):
                         route = output.route
                     if route:
                         yield _sse_event("meta", {"route": route, "thread_id": thread_id})
+                        last_yield_time = asyncio.get_event_loop().time()
 
                 # company 주가 데이터 선행 전송
                 elif kind == "on_custom_event" and event.get("name") == "company_data":
                     yield _sse_event("data", event.get("data", {}))
+                    last_yield_time = asyncio.get_event_loop().time()
 
                 # 합성 LLM 토큰 스트리밍 (synthesis 태그가 있는 호출만)
                 elif kind == "on_chat_model_stream" and node_name in _STREAMING_NODES:
@@ -218,6 +228,7 @@ async def chat(request: ChatRequest):
                         token = chunk_data.content if hasattr(chunk_data, 'content') else ""
                         if token:
                             yield _sse_event("chunk", {"text": token})
+                            last_yield_time = asyncio.get_event_loop().time()
 
                 # response 노드 완료 시 final_answer 캡처
                 elif kind == "on_chain_end" and node_name.endswith("_response"):
