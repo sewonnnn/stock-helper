@@ -385,6 +385,8 @@ function addStreamCard(route) {
     return d.querySelector('.ai-card');
 }
 
+let _scrollRafId = null;
+
 function renderStreamText(el, fullText, route) {
     let display = fullText
         .replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '')
@@ -394,9 +396,18 @@ function renderStreamText(el, fullText, route) {
         .replace(/\*\*/g, '')
         .trimEnd();
     el.style.whiteSpace = 'pre-wrap';
-    el.textContent = display;
-    const container = document.getElementById('chatContainer');
-    container.scrollTop = container.scrollHeight;
+    if (el.firstChild && el.firstChild.nodeType === 3) {
+        el.firstChild.nodeValue = display;
+    } else {
+        el.textContent = display;
+    }
+    if (!_scrollRafId) {
+        _scrollRafId = requestAnimationFrame(() => {
+            _scrollRafId = null;
+            const container = document.getElementById('chatContainer');
+            container.scrollTop = container.scrollHeight;
+        });
+    }
 }
 
 function finalizeStreamCard(cardEl, data, route) {
