@@ -453,15 +453,14 @@ function finalizeStreamCard(cardEl, data, route) {
         topHtml += `<div class="resp-section" style="padding:8px 0">${items}</div>`;
     }
 
-    if (topEl) topEl.innerHTML = topHtml;
+    // data 이벤트로 이미 렌더링된 경우(company) 상단 중복 교체 스킵
+    if (topEl && (!topEl.innerHTML || !data.price)) topEl.innerHTML = topHtml;
 
-    // ── 텍스트 영역: 마크다운 포맷팅 적용 (내용 동일, 서식만 변환) ──
-    if (textEl) {
-        let finalText = data.insight || data.glossary || '';
-        if (finalText) {
-            textEl.innerHTML = highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText));
-        }
-    }
+    // 텍스트 + 하단을 하나의 프레임에 배칭하여 repaint 1회로 통합
+    const finalText = data.insight || data.glossary || '';
+    const formattedText = finalText
+        ? highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText))
+        : '';
 
     // ── 하단: 뉴스, 회사소개, 면책, 출처, 후속질문 ──
     let bottomHtml = '';
@@ -490,15 +489,21 @@ function finalizeStreamCard(cardEl, data, route) {
         bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
     }
 
-    if (bottomEl && bottomHtml) {
-        bottomEl.style.opacity = '0';
-        bottomEl.innerHTML = bottomHtml;
-        bottomEl.style.transition = 'opacity 0.3s ease';
-        requestAnimationFrame(() => { bottomEl.style.opacity = '1'; });
-    }
+    // 텍스트 + 하단을 한 프레임에 반영 (repaint 1회)
+    requestAnimationFrame(() => {
+        if (textEl && formattedText) {
+            textEl.style.whiteSpace = '';
+            textEl.innerHTML = formattedText;
+        }
+        if (bottomEl && bottomHtml) {
+            bottomEl.innerHTML = bottomHtml;
+        }
+        const container = document.getElementById('chatContainer');
+        container.scrollTop = container.scrollHeight;
+    });
 
     // 용어 힌트
-    if (!glossaryHintShown && cardEl.innerHTML.includes('term-tooltip')) {
+    if (!glossaryHintShown && formattedText.includes('term-tooltip')) {
         const hintHtml = `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`;
         cardEl.insertAdjacentHTML('afterbegin', hintHtml);
         glossaryHintShown = true;
