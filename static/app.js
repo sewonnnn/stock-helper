@@ -437,13 +437,19 @@ function finalizeStreamCard(cardEl, data, route) {
 
     if (topEl) topEl.innerHTML = topHtml;
 
-    // ── 텍스트 영역: 최종 텍스트로 갱신 + highlightTerms 적용 ──
+    // ── 텍스트 영역: 최종 텍스트로 갱신 + highlightTerms 적용 (fade 전환) ──
     if (textEl) {
         let finalText = data.insight || data.glossary || '';
-        if (finalText) {
-            textEl.innerHTML = highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText));
-        } else if (textEl.innerHTML) {
-            textEl.innerHTML = highlightTerms(textEl.innerHTML);
+        const newHtml = finalText
+            ? highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText))
+            : (textEl.innerHTML ? highlightTerms(textEl.innerHTML) : '');
+        if (newHtml) {
+            textEl.style.transition = 'opacity 0.2s ease';
+            textEl.style.opacity = '0';
+            setTimeout(() => {
+                textEl.innerHTML = newHtml;
+                textEl.style.opacity = '1';
+            }, 200);
         }
     }
 
@@ -474,7 +480,12 @@ function finalizeStreamCard(cardEl, data, route) {
         bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
     }
 
-    if (bottomEl) bottomEl.innerHTML = bottomHtml;
+    if (bottomEl && bottomHtml) {
+        bottomEl.style.opacity = '0';
+        bottomEl.innerHTML = bottomHtml;
+        bottomEl.style.transition = 'opacity 0.3s ease';
+        requestAnimationFrame(() => { bottomEl.style.opacity = '1'; });
+    }
 
     // 용어 힌트
     if (!glossaryHintShown && cardEl.innerHTML.includes('term-tooltip')) {
