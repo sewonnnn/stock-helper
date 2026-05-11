@@ -206,7 +206,6 @@ function setButtonMode(mode){
 }
 
 function stopGeneration(){
-    cancelStreamRaf();
     if(abortController){ abortController.abort(); abortController=null; }
     if(currentLoadingId){ removeMessage(currentLoadingId); currentLoadingId=null; }
     // 스트리밍 카드도 정리
@@ -386,29 +385,14 @@ function addStreamCard(route) {
     return d.querySelector('.ai-card');
 }
 
-let _streamRafId = null, _streamPending = null;
-
 function renderStreamText(el, fullText, route) {
-    _streamPending = { el, fullText, route };
-    if (_streamRafId) return;
-    _streamRafId = requestAnimationFrame(() => {
-        _streamRafId = null;
-        const p = _streamPending; if (!p) return;
-        _streamPending = null;
-        let display = p.fullText.replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '').replace(/(?:company_intro|회사소개)\s*[:：].*/gi, '').trimEnd();
-        p.el.innerHTML = (p.route === 'glossary') ? fmtSent(display) : renderMd(display);
-        const container = document.getElementById('chatContainer');
-        container.scrollTop = container.scrollHeight;
-    });
-}
-
-function cancelStreamRaf() {
-    if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
-    _streamPending = null;
+    let display = fullText.replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '').replace(/(?:company_intro|회사소개)\s*[:：].*/gi, '').trimEnd();
+    el.textContent = display;
+    const container = document.getElementById('chatContainer');
+    container.scrollTop = container.scrollHeight;
 }
 
 function finalizeStreamCard(cardEl, data, route) {
-    cancelStreamRaf();
     const sl = document.getElementById('stream-loading');
     if (sl) sl.remove();
 
