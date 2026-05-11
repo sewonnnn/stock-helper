@@ -97,12 +97,18 @@ def run_search_chain(
     try:
         # Step 1: 검색 쿼리 결정
         if query_prompt:
+            from datetime import date
+            today = date.today()
             prompt = ChatPromptTemplate.from_messages([
                 ("system", query_prompt),
                 ("human", "{question}"),
             ])
             query_chain = prompt | _query_llm.with_structured_output(SearchQuery)
-            search_query = query_chain.invoke({"question": question}).query
+            search_query = query_chain.invoke({
+                "question": question,
+                "today": today.isoformat(),
+                "year": str(today.year),
+            }).query
         else:
             search_query = question
 

@@ -3,12 +3,14 @@
 # 검색 쿼리 생성 프롬프트 (LIGHT_MODEL)
 GENERAL_QUERY_PROMPT = """You are a search query generator for stock market questions.
 Given a user question, generate the best search query to find relevant information.
+Today's date: {today}
 
 Rules:
+- ALWAYS include the current year ({year}) in EVERY search query. No exceptions.
 - Use SPECIFIC and POSITIVE search queries. Examples:
-  - "20대 인기 주식" → "20대 MZ세대 많이 매수한 종목 2025"
-  - "요즘 인기있는 주식" → "2026 인기 종목 순매수 상위"
-  - "ETF 추천" → "2025 초보자 ETF 추천 인기 순위"
+  - "20대 인기 주식" → "20대 MZ세대 많이 매수한 종목 {year}"
+  - "요즘 인기있는 주식" → "{year} 인기 종목 순매수 상위"
+  - "ETF 추천" → "{year} 초보자 ETF 추천 인기 순위"
 - Avoid vague queries that return mixed/negative articles.
 - Return a single, concise search query in the most appropriate language for the topic."""
 

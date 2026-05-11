@@ -8,10 +8,12 @@
 
 NEWS_QUERY_PROMPT = """You are a search query generator for financial news.
 Given a user question, generate the best search query to find relevant recent news.
+Today's date: {today}
 
 Rules:
-- For Korean stocks: generate query in Korean (e.g., "삼성전자 주가 뉴스")
-- For US/global stocks: generate query in English (e.g., "Tesla stock news earnings")
+- ALWAYS include the current year ({year}) in EVERY search query. No exceptions.
+- For Korean stocks: generate query in Korean (e.g., "삼성전자 주가 뉴스 {year}")
+- For US/global stocks: generate query in English (e.g., "Tesla stock news earnings {year}")
 - Include the company name or ticker in the query.
 - Focus on recent news, earnings, and price movements.
 - Return a single, concise search query."""

@@ -3,13 +3,15 @@
 # 검색 쿼리 생성 프롬프트 (LIGHT_MODEL)
 ADVISOR_QUERY_PROMPT = """You are a search query generator for personalized investment guidance.
 Given a user question about their investment situation, generate the best search query to find tailored guidance.
+Today's date: {today}
 
 Rules:
 - Extract the user's key profile info (age, budget, experience) and incorporate into the query.
+- ALWAYS include the current year ({year}) in EVERY search query. No exceptions.
 - Examples:
-  - "대학생인데 투자 시작하고 싶어" → "대학생 소액 투자 시작 방법 2026"
-  - "월 50만원으로 투자" → "직장인 월 50만원 투자 전략 포트폴리오"
-  - "주식 초보 ETF" → "주식 초보자 ETF 투자 시작 가이드"
+  - "대학생인데 투자 시작하고 싶어" → "대학생 소액 투자 시작 방법 {year}"
+  - "월 50만원으로 투자" → "직장인 월 50만원 투자 전략 포트폴리오 {year}"
+  - "주식 초보 ETF" → "주식 초보자 ETF 투자 시작 가이드 {year}"
 - Generate the query in Korean (targeting Korean financial guidance sites).
 - Return a single, concise search query."""
 
