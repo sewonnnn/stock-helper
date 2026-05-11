@@ -164,24 +164,6 @@ def _filter_by_trusted_domains(urls: list[str], trusted_domains: list[str]) -> l
     return filtered
 
 
-def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
-    """URL 목록을 병렬로 유효성 검사하여 살아있는 URL만 반환합니다."""
-    if not urls:
-        return []
-
-    import concurrent.futures
-    import requests
-
-    def _check(url: str) -> str | None:
-        try:
-            resp = requests.head(url, timeout=timeout, allow_redirects=True)
-            return url if resp.status_code < 400 else None
-        except Exception:
-            return None
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(urls)) as executor:
-        results = executor.map(_check, urls)
-        return [url for url in results if url]
 
 # 추천 질문 추출
 def _extract_followups(text: str) -> tuple[str, list[str]]:
@@ -328,9 +310,8 @@ def news_direct_response(state: GraphState) -> dict:
                 url=url,
             ))
 
-    # 출처 URL 필터 + 유효성 검사
-    trusted_urls = _filter_by_trusted_domains(source_urls, TRUSTED_NEWS_DOMAINS)
-    sources = _validate_urls(trusted_urls)
+    # 출처 URL 필터 (신뢰 도메인만)
+    sources = _filter_by_trusted_domains(source_urls, TRUSTED_NEWS_DOMAINS)
 
     return {
         "final_answer": StockResponse(
@@ -357,8 +338,7 @@ def web_search_direct_response(state: GraphState) -> dict:
     clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
     clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
 
-    # 검색 단계에서 이미 신뢰 도메인 필터 완료 → URL 유효성만 검사
-    sources = _validate_urls(source_urls)
+    sources = source_urls
 
     return {
         "final_answer": StockResponse(
