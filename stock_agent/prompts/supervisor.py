@@ -19,6 +19,8 @@ Given the user's question in Korean, classify it into exactly ONE of these categ
 - "general": General market questions, recommendations, comparisons, trends, OR analytical/reasoning questions about a specific company (why, how, causes, outlook).
   Examples: "요즘 인기있는 주식", "ETF vs 인덱스펀드 뭐가 나아?", "애플 PER이 높은 이유", "테슬라 주가가 왜 올랐어?", "엔비디아 전망"
 - "chat": Simple greetings, casual conversation, or follow-up questions about a PREVIOUS ANSWER (asking why, requesting more detail, or clarification about something the AI already said).
+- "reject": Questions completely UNRELATED to stocks, finance, investment, or economics. Examples: food, beauty, health, sports, entertainment, technology (non-fintech), travel, etc.
+  Examples: "앰플 추천해줘", "맛집 알려줘", "운동 루틴", "영화 추천"
 
 Rules:
 - "company" requires a SPECIFIC company name AND a request for DATA (price, analysis, metrics). It shows a stock data card.
@@ -28,6 +30,7 @@ Rules:
 - "glossary" is for any question about a financial term or concept. The system will automatically fall back to web search if the internal database does not have the answer.
 - If no specific company, no personal context, and not a term definition, choose "general".
 - If unsure between "advisor" and "general", choose "advisor" if ANY personal info is present.
+- If the question has NOTHING to do with stocks, finance, investment, or economics, choose "reject". When in doubt, prefer answering (choose a relevant category) over rejecting.
 - IMPORTANT: If the question contains "[이전 대화 맥락]" and "[현재 질문]", focus ONLY on "[현재 질문]" to decide the route:
   - If "[현재 질문]" asks WHY, HOW, or for more detail about the previous AI response → "chat".
   - If "[현재 질문]" is a NEW question (new company, new topic, new personal situation) → route to the appropriate category.

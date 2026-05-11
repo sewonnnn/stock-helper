@@ -16,7 +16,7 @@ _timing_logger = get_logger("timing")
 
 class RouteQuery(BaseModel):
     """질문 라우팅 결과"""
-    datasource: str = Field(description='"company", "news", "glossary", "advisor", "general", or "chat"')
+    datasource: str = Field(description='"company", "news", "glossary", "advisor", "general", "chat", or "reject"')
 
 
 question_router = (

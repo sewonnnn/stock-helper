@@ -14,7 +14,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
-from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS
+from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, REJECT_RESPONSE
 from stock_agent.utils.schemas import (
     StockResponse, NewsItem, TickerInfo, PriceInfo, Metric,
 )
@@ -139,6 +139,7 @@ def route_by_supervisor(state: GraphState) -> str:
         "general": "general",
         "advisor": "advisor",
         "chat": "chat",
+        "reject": "reject",
     }
     return mapping.get(route, "general")
 
@@ -349,6 +350,17 @@ def web_search_direct_response(state: GraphState) -> dict:
     }
 
 
+def reject_node(state: GraphState) -> dict:
+    """주식/금융과 무관한 질문에 대한 안내 메시지를 반환합니다. LLM 호출 없음."""
+    return {
+        "final_answer": StockResponse(
+            insight=REJECT_RESPONSE,
+            sources=[],
+            follow_up=["주식 투자 시작하는 방법", "ETF란 무엇인가요?", "오늘 시장 동향"],
+        )
+    }
+
+
 def chat_direct_response(state: GraphState) -> dict:
     """chat은 대화 맥락만으로 짧게 답변하므로 Responder 스킵."""
     draft = state["draft_answer"]
@@ -414,6 +426,7 @@ def build_graph():
     workflow.add_node("advisor_response", web_search_direct_response)
     workflow.add_node("chat", chat_node)
     workflow.add_node("chat_response", chat_direct_response)
+    workflow.add_node("reject", reject_node)
     workflow.add_node("glossary_response", glossary_direct_response)
     workflow.add_node("save_history", save_history)
 
@@ -432,8 +445,12 @@ def build_graph():
             "general": "general",
             "advisor": "advisor",
             "chat": "chat",
+            "reject": "reject",
         },
     )
+
+    # reject → 즉시 히스토리 저장 (LLM 호출 없음)
+    workflow.add_edge("reject", "save_history")
 
     # company → 직통 응답 → 히스토리 저장
     workflow.add_edge("company", "company_response")

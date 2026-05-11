@@ -66,6 +66,7 @@ DISCLAIMER = (
 
 # 응답 메시지
 UNKNOWN_RESPONSE = "확인 불가합니다. 정확한 데이터를 찾을 수 없습니다."
+REJECT_RESPONSE = "저는 주식·금융 관련 질문에만 답변할 수 있어요. 주식, 투자, 경제에 관한 궁금한 점을 물어보세요!"
 
 # 입력 제한
 MAX_QUESTION_LENGTH = 500
