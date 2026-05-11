@@ -14,9 +14,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from stock_agent.utils.state import GraphState
-from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS, TRUSTED_ADVISOR_DOMAINS
+from stock_agent.utils.constants import TRUSTED_NEWS_DOMAINS
 from stock_agent.utils.schemas import (
-    StockResponse, NewsItem, TickerInfo, PriceInfo, RangeInfo, Metric,
+    StockResponse, NewsItem, TickerInfo, PriceInfo, Metric,
 )
 from stock_agent.nodes.supervisor import supervisor_node
 from stock_agent.nodes.company import company_node
@@ -183,7 +183,7 @@ def _validate_urls(urls: list[str], timeout: float = 2.0) -> list[str]:
         results = executor.map(_check, urls)
         return [url for url in results if url]
 
-
+# 추천 질문 추출
 def _extract_followups(text: str) -> tuple[str, list[str]]:
     """텍스트 끝에서 'follow_up: A|B|C' 패턴을 추출하고 본문과 분리합니다."""
     import re
@@ -194,7 +194,7 @@ def _extract_followups(text: str) -> tuple[str, list[str]]:
     clean_text = text[:match.start()].rstrip()
     return clean_text, followups
 
-
+# 회사 소개 한 줄 뽑음
 def _extract_company_intro(text: str) -> tuple[str, str | None]:
     """텍스트에서 'company_intro: ...' 패턴을 추출하고 본문과 분리합니다."""
     import re
@@ -204,6 +204,74 @@ def _extract_company_intro(text: str) -> tuple[str, str | None]:
     intro = match.group(1).strip()
     clean_text = text[:match.start()].rstrip()
     return clean_text, intro
+
+
+def _level_threshold(value: float | None, low_max: float, high_min: float) -> str:
+    """수치 임계값으로 level 분류. low_max 미만=낮음, high_min 초과=높음, 그 사이=보통."""
+    if value is None:
+        return "정보없음"
+    if value < low_max:
+        return "낮음"
+    if value > high_min:
+        return "높음"
+    return "보통"
+
+
+def extract_company_price_data(data: dict) -> dict:
+    """yfinance data dict에서 가격·지표 구조화 데이터를 추출합니다."""
+    if not data or "error" in data:
+        return {}
+
+    overview = data.get("overview", {})
+    valuation = data.get("valuation", {})
+    health = data.get("financial_health", {})
+
+    ticker_info = TickerInfo(
+        ticker=overview.get("ticker", ""),
+        company_name=overview.get("company_name", "") or overview.get("ticker", ""),
+        sector=overview.get("sector"),
+        industry=overview.get("industry"),
+    )
+
+    price = None
+    cur = overview.get("current_price")
+    prev = overview.get("previous_close")
+    if cur is not None and prev is not None:
+        price = PriceInfo(
+            current_price=cur,
+            previous_close=prev,
+            change=overview.get("change") or 0.0,
+            change_percent=overview.get("change_percent") or 0.0,
+            currency=overview.get("currency", "USD"),
+            krw_price=overview.get("krw_price"),
+            usd_krw_rate=overview.get("usd_krw_rate"),
+            market_cap=overview.get("market_cap"),
+            market_cap_tier=overview.get("market_cap_tier"),
+        )
+
+    metrics: list[Metric] = []
+    per = valuation.get("per")
+    if per is not None:
+        metrics.append(Metric(name="PER", value=f"{per:.1f}", level=_level_threshold(per, 15, 25)))
+    pbr = valuation.get("pbr")
+    if pbr is not None:
+        metrics.append(Metric(name="PBR", value=f"{pbr:.2f}", level=_level_threshold(pbr, 1, 3)))
+    roe = health.get("return_on_equity")
+    if roe:
+        try:
+            roe_val = float(roe.replace("%", "").strip())
+            metrics.append(Metric(name="ROE", value=roe, level=_level_threshold(roe_val, 10, 20)))
+        except ValueError:
+            pass
+    div_yield = valuation.get("dividend_yield")
+    if div_yield is not None:
+        metrics.append(Metric(name="배당수익률", value=f"{div_yield * 100:.2f}%", level=_level_threshold(div_yield * 100, 1, 4)))
+
+    return {
+        "ticker_info": ticker_info,
+        "price": price,
+        "key_metrics": metrics or None,
+    }
 
 
 def glossary_direct_response(state: GraphState) -> dict:
@@ -275,36 +343,8 @@ def news_direct_response(state: GraphState) -> dict:
     }
 
 
-def general_direct_response(state: GraphState) -> dict:
-    """general은 웹 검색 결과를 이미 한국어로 정리했으므로 Responder 스킵.
-    StockResponse를 직접 구성합니다."""
-    import re
-
-    draft = state["draft_answer"]
-    source_urls = state["agent_results"].get("source_urls", [])
-
-    # 후속질문 추출
-    draft, followups = _extract_followups(draft)
-
-    # 본문에서 인라인 출처 링크 제거
-    clean_draft = re.sub(r'\s*\[출처[^\]]*\]\(https?://[^\)]+\)', '', draft)
-    clean_draft = re.sub(r'\s*\[([^\]]+)\]\(https?://[^\)]+\)', '', clean_draft)
-
-    # 검색 단계에서 이미 신뢰 도메인 필터 완료 → URL 유효성만 검사
-    sources = _validate_urls(source_urls)
-
-    return {
-        "final_answer": StockResponse(
-            insight=clean_draft,
-            sources=sources,
-            follow_up=followups,
-        )
-    }
-
-
-def advisor_direct_response(state: GraphState) -> dict:
-    """advisor는 웹 검색 기반 맞춤 안내이므로 Responder 스킵.
-    StockResponse를 직접 구성합니다."""
+def web_search_direct_response(state: GraphState) -> dict:
+    """general·advisor 공용 직통 응답. 웹 검색 결과 기반 StockResponse 구성."""
     import re
 
     draft = state["draft_answer"]
@@ -344,30 +384,9 @@ def chat_direct_response(state: GraphState) -> dict:
     }
 
 
-def _level_threshold(value: float | None, low_max: float, high_min: float) -> str:
-    """수치 임계값으로 level 분류. low_max 미만=낮음, high_min 초과=높음, 그 사이=보통."""
-    if value is None:
-        return "정보없음"
-    if value < low_max:
-        return "낮음"
-    if value > high_min:
-        return "높음"
-    return "보통"
-
-
-def _parse_pct_str(s: str | None) -> float | None:
-    """'15.0%' → 15.0. 파싱 실패 시 None."""
-    if not s or not isinstance(s, str):
-        return None
-    try:
-        return float(s.replace("%", "").strip())
-    except ValueError:
-        return None
-
-
 def company_direct_response(state: GraphState) -> dict:
-    """company는 yfinance 데이터를 결정론적으로 매핑. Responder LLM 스킵.
-    insight는 합성 LLM의 draft를 그대로 사용, 구조화 필드는 코드로 추출."""
+    """company는 yfinance 데이터를 결정론적으로 매핑.
+    insight는 노드 합성 LLM의 draft를 그대로 사용, 구조화 필드는 코드로 추출."""
     draft = state["draft_answer"]
     agent_results = state["agent_results"]
     data = agent_results.get("data_dict") or {}
@@ -375,8 +394,8 @@ def company_direct_response(state: GraphState) -> dict:
     clean_draft, followups = _extract_followups(draft)
     clean_draft, company_intro_kr = _extract_company_intro(clean_draft)
 
-    # 데이터 없음 → insight만 채워서 반환
-    if not data or "error" in data:
+    extracted = extract_company_price_data(data)
+    if not extracted:
         return {
             "final_answer": StockResponse(
                 insight=clean_draft,
@@ -384,53 +403,11 @@ def company_direct_response(state: GraphState) -> dict:
             )
         }
 
-    overview = data.get("overview", {})
-    valuation = data.get("valuation", {})
-    health = data.get("financial_health", {})
-
-    ticker_info = TickerInfo(
-        ticker=overview.get("ticker", ""),
-        company_name=overview.get("company_name", "") or overview.get("ticker", ""),
-        sector=overview.get("sector"),
-        industry=overview.get("industry"),
-    )
-
-    price = None
-    cur = overview.get("current_price")
-    prev = overview.get("previous_close")
-    if cur is not None and prev is not None:
-        price = PriceInfo(
-            current_price=cur,
-            previous_close=prev,
-            change=overview.get("change") or 0.0,
-            change_percent=overview.get("change_percent") or 0.0,
-            currency=overview.get("currency", "USD"),
-            krw_price=overview.get("krw_price"),
-            usd_krw_rate=overview.get("usd_krw_rate"),
-            market_cap=overview.get("market_cap"),
-            market_cap_tier=overview.get("market_cap_tier"),
-        )
-
-    # 핵심 지표 추출
-    metrics: list[Metric] = []
-    per = valuation.get("per")
-    if per is not None:
-        metrics.append(Metric(name="PER", value=f"{per:.1f}", level=_level_threshold(per, 15, 25)))
-    pbr = valuation.get("pbr")
-    if pbr is not None:
-        metrics.append(Metric(name="PBR", value=f"{pbr:.2f}", level=_level_threshold(pbr, 1, 3)))
-    roe = health.get("return_on_equity")
-    if roe:
-        metrics.append(Metric(name="ROE", value=roe, level=_level_threshold(float(roe.replace("%", "")), 10, 20)))
-    div_yield = valuation.get("dividend_yield")
-    if div_yield is not None:
-        metrics.append(Metric(name="배당수익률", value=f"{div_yield * 100:.2f}%", level=_level_threshold(div_yield * 100, 1, 4)))
-
     return {
         "final_answer": StockResponse(
-            ticker_info=ticker_info,
-            price=price,
-            key_metrics=metrics or None,
+            ticker_info=extracted["ticker_info"],
+            price=extracted["price"],
+            key_metrics=extracted["key_metrics"],
             company_intro=company_intro_kr,
             insight=clean_draft,
             follow_up=followups,
@@ -452,9 +429,9 @@ def build_graph():
     workflow.add_node("news_response", news_direct_response)
     workflow.add_node("glossary", glossary_node)
     workflow.add_node("general", general_node)
-    workflow.add_node("general_response", general_direct_response)
+    workflow.add_node("general_response", web_search_direct_response)
     workflow.add_node("advisor", advisor_node)
-    workflow.add_node("advisor_response", advisor_direct_response)
+    workflow.add_node("advisor_response", web_search_direct_response)
     workflow.add_node("chat", chat_node)
     workflow.add_node("chat_response", chat_direct_response)
     workflow.add_node("glossary_response", glossary_direct_response)

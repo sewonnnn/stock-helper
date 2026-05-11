@@ -32,9 +32,15 @@ def chat_node(state: GraphState) -> dict:
     question = state["question"]
 
     try:
-        draft = (_CHAT_PROMPT | _chat_llm).invoke({
-            "question": question,
-        }).content
+        chunks = []
+        for chunk in (_CHAT_PROMPT | _chat_llm).stream(
+            {"question": question},
+            config={"tags": ["synthesis"]},
+        ):
+            token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            if token:
+                chunks.append(token)
+        draft = "".join(chunks)
 
         return {
             "draft_answer": draft,

@@ -18,6 +18,7 @@ Rules:
 8. End with exactly this format:
    follow_up: topic1|topic2|topic3
    These must be things the USER would naturally want to ask next about the company — written as requests, NOT questions directed at the user. Good examples: "애플 최근 뉴스"|"애플 배당금 정보"|"애플 경쟁사 비교". Bad examples (never use): "더 알고 싶은 부분이 있나요?"|"어떤 지표가 궁금하세요?"
+"""
 
 
 #  역할: 주식 초보자를 위한 기업 해석 텍스트 생성

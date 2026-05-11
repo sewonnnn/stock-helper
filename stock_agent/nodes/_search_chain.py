@@ -122,10 +122,15 @@ def run_search_chain(
                     ("system", synthesis_prompt),
                     ("human", "질문: {question}\n\n검색 결과:\n(검색 결과가 없습니다. 당신의 지식을 바탕으로 답변해 주세요.)"),
                 ])
-                draft = (synth_prompt | _synthesis_llm).invoke({
-                    "question": question,
-                    "data": "",
-                }).content
+                chunks = []
+                for chunk in (synth_prompt | _synthesis_llm).stream(
+                    {"question": question, "data": ""},
+                    config={"tags": ["synthesis"]},
+                ):
+                    token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                    if token:
+                        chunks.append(token)
+                draft = "".join(chunks)
                 return {
                     "draft_answer": draft,
                     "agent_results": {"source_data": "", "source_urls": [], "agent": agent_name},
@@ -137,15 +142,20 @@ def run_search_chain(
 
         source_data, source_urls = _items_to_source_data(items)
 
-        # Step 3: LLM 합성 (DEFAULT_MODEL)
+        # Step 3: LLM 합성 (DEFAULT_MODEL, .stream()으로 astream_events 토큰 캡처)
         synth_prompt = ChatPromptTemplate.from_messages([
             ("system", synthesis_prompt),
             ("human", "질문: {question}\n\n검색 결과:\n{data}"),
         ])
-        draft = (synth_prompt | _synthesis_llm).invoke({
-            "question": question,
-            "data": source_data,
-        }).content
+        chunks = []
+        for chunk in (synth_prompt | _synthesis_llm).stream(
+            {"question": question, "data": source_data},
+            config={"tags": ["synthesis"]},
+        ):
+            token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            if token:
+                chunks.append(token)
+        draft = "".join(chunks)
 
         return {
             "draft_answer": draft,

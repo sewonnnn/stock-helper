@@ -12,6 +12,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
+from langchain_core.callbacks.manager import dispatch_custom_event
+
 from stock_agent.utils.constants import DEFAULT_MODEL, LIGHT_MODEL, ERROR_MESSAGES
 from stock_agent.utils.state import GraphState
 from stock_agent.prompts.company import COMPANY_SYNTHESIS_PROMPT
@@ -145,16 +147,35 @@ def company_node(state: GraphState) -> dict:
                 "agent_results": {"source_data": source_json, "data_dict": data, "agent": "company"},
             }
 
-        # Step 4: LLM 합성 (GPT-4o 1회)
+        # Step 3.5: 주가 데이터를 먼저 클라이언트에 전송 (LLM 합성 전)
+        from stock_agent.agent import extract_company_price_data
+        price_data = extract_company_price_data(data)
+        if price_data:
+            # Pydantic 모델을 dict로 변환
+            event_payload = {}
+            if price_data.get("ticker_info"):
+                event_payload["ticker_info"] = price_data["ticker_info"].model_dump(exclude_none=True)
+            if price_data.get("price"):
+                event_payload["price"] = price_data["price"].model_dump(exclude_none=True)
+            if price_data.get("key_metrics"):
+                event_payload["key_metrics"] = [m.model_dump() for m in price_data["key_metrics"]]
+            dispatch_custom_event("company_data", event_payload)
+
+        # Step 4: LLM 합성 (GPT-4o 1회, .stream()으로 astream_events 토큰 캡처)
         prompt = ChatPromptTemplate.from_messages([
             ("system", COMPANY_SYNTHESIS_PROMPT),
             ("human", "질문: {question}\n\n수집된 데이터:\n{data}"),
         ])
         t0 = time.perf_counter()
-        draft = (prompt | _synthesis_llm).invoke({
-            "question": question,
-            "data": source_json,
-        }).content
+        chunks = []
+        for chunk in (prompt | _synthesis_llm).stream(
+            {"question": question, "data": source_json},
+            config={"tags": ["synthesis"]},
+        ):
+            token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            if token:
+                chunks.append(token)
+        draft = "".join(chunks)
         _timing_logger.info("[company:4 synthesis-LLM] %.0fms", (time.perf_counter() - t0) * 1000)
         _timing_logger.info("[company TOTAL] %.0fms", (time.perf_counter() - t_node) * 1000)
 

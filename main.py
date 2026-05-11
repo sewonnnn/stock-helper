@@ -3,8 +3,9 @@
 import warnings
 from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 warnings.filterwarnings("ignore", category=LangChainPendingDeprecationWarning)
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
-import time
+import json
 import uuid
 from dotenv import load_dotenv
 load_dotenv()
@@ -13,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 import difflib
@@ -21,13 +22,12 @@ import difflib
 from stock_agent.agent import graph
 from stock_agent.utils.schemas import StockResponse
 from stock_agent.utils.constants import (
-    DISCLAIMER, UNKNOWN_RESPONSE, ERROR_MESSAGES, MAX_QUESTION_LENGTH,
+    UNKNOWN_RESPONSE, ERROR_MESSAGES, MAX_QUESTION_LENGTH,
 )
 from stock_agent.tools.ticker_mapping import TICKER_MAP
 from stock_agent.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-_timing_logger = get_logger("timing")
 
 app = FastAPI(title="주식 멘토 AI", version="1.0.0")
 
@@ -47,14 +47,6 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     question: str = Field(..., max_length=MAX_QUESTION_LENGTH)
     thread_id: str | None = None  # 대화 스레드 ID (없으면 새로 생성)
-
-
-class ChatResponse(BaseModel):
-    success: bool
-    data: StockResponse | None = None
-    route: str | None = None
-    thread_id: str | None = None  # 프론트에서 이후 요청에 재사용
-    error: str | None = None
 
 
 @app.exception_handler(RequestValidationError)
@@ -143,69 +135,113 @@ def _check_company_typo(question: str) -> StockResponse | None:
     return None
 
 
-@app.post("/chat", response_model=ChatResponse)
+# ── SSE 스트리밍 (LangGraph astream_events) ──
+
+# 합성 LLM 토큰을 스트리밍할 노드 목록
+_STREAMING_NODES = {"company", "news", "general", "advisor", "chat"}
+
+
+def _sse_event(event: str, data: dict) -> str:
+    """SSE 형식 문자열 생성."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat")
 async def chat(request: ChatRequest):
-    """사용자 질문을 처리하여 구조화된 응답을 반환합니다."""
+    """LangGraph astream_events 기반 SSE 스트리밍 엔드포인트."""
     thread_id = request.thread_id or str(uuid.uuid4())
 
     if not request.question.strip():
-        return ChatResponse(
-            success=False,
-            error="질문을 입력해 주세요.",
-            thread_id=thread_id,
-        )
+        async def empty_gen():
+            yield _sse_event("done", {"error": "질문을 입력해 주세요."})
+        return StreamingResponse(empty_gen(), media_type="text/event-stream")
 
-    logger.info("질문 수신 [thread=%s]: %s", thread_id, request.question[:100])
+    logger.info("[stream] 질문 수신 [thread=%s]: %s", thread_id, request.question[:100])
 
-    # 기업명 오타 빠른 감지 — LLM 호출 없이 즉시 추천 반환
+    # 기업명 오타 빠른 감지
     typo_response = _check_company_typo(request.question)
-    logger.info("오타 감지 결과: %s", typo_response)
     if typo_response:
-        return ChatResponse(
-            success=True, data=typo_response, route="company", thread_id=thread_id
-        )
+        async def typo_gen():
+            yield _sse_event("meta", {"route": "company", "thread_id": thread_id})
+            yield _sse_event("chunk", {"text": typo_response.insight})
+            done_data = typo_response.model_dump(exclude_none=True)
+            yield _sse_event("done", done_data)
+        return StreamingResponse(typo_gen(), media_type="text/event-stream")
 
-    try:
-        t_total = time.perf_counter()
-        result = graph.invoke(
-            {
-                "question": request.question,
-                "chat_history": [{"role": "user", "content": request.question}],
-                "retry_count": 0,
-                "agent_results": {},
-                "draft_answer": "",
-                "validated": False,
-                "validation_reason": "",
-                "hallucinated_parts": [],
-                "route": "",
-                "final_answer": None,
-            },
-            config={"configurable": {"thread_id": thread_id}},
-        )
-        final_answer = result.get("final_answer")
-        route = result.get("route", "")
-        _timing_logger.info("[graph TOTAL] %.0fms (route=%s)", (time.perf_counter() - t_total) * 1000, route)
-        if final_answer:
-            return ChatResponse(
-                success=True, data=final_answer, route=route, thread_id=thread_id
-            )
-        else:
-            return ChatResponse(
-                success=True,
-                data=StockResponse(
-                    insight=UNKNOWN_RESPONSE,
-                    confidence="낮음",
-                    disclaimer=DISCLAIMER,
-                ),
-                thread_id=thread_id,
-            )
-    except Exception as e:
-        logger.error("graph.invoke 실패: %s", e, exc_info=True)
-        return ChatResponse(
-            success=False,
-            error=ERROR_MESSAGES["server_error"],
-            thread_id=thread_id,
-        )
+    async def event_generator():
+        route = None
+        final_answer = None
+
+        input_state = {
+            "question": request.question,
+            "chat_history": [{"role": "user", "content": request.question}],
+            "retry_count": 0,
+            "agent_results": {},
+            "draft_answer": "",
+            "validated": False,
+            "validation_reason": "",
+            "hallucinated_parts": [],
+            "route": "",
+            "final_answer": None,
+        }
+        config = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            async for event in graph.astream_events(input_state, config, version="v2"):
+                kind = event["event"]
+                metadata = event.get("metadata", {})
+                node_name = metadata.get("langgraph_node", "")
+
+                # 라우트 감지: supervisor 노드 완료 시
+                if kind == "on_chain_end" and node_name == "supervisor" and not route:
+                    output = event.get("data", {}).get("output")
+                    if isinstance(output, dict) and "route" in output:
+                        route = output["route"]
+                    elif hasattr(output, "datasource"):
+                        route = output.datasource
+                    elif hasattr(output, "route"):
+                        route = output.route
+                    if route:
+                        yield _sse_event("meta", {"route": route, "thread_id": thread_id})
+
+                # company 주가 데이터 선행 전송
+                elif kind == "on_custom_event" and event.get("name") == "company_data":
+                    yield _sse_event("data", event.get("data", {}))
+
+                # 합성 LLM 토큰 스트리밍 (synthesis 태그가 있는 호출만)
+                elif kind == "on_chat_model_stream" and node_name in _STREAMING_NODES:
+                    tags = event.get("tags", [])
+                    if "synthesis" not in tags:
+                        continue
+                    chunk_data = event.get("data", {}).get("chunk")
+                    if chunk_data:
+                        token = chunk_data.content if hasattr(chunk_data, 'content') else ""
+                        if token:
+                            yield _sse_event("chunk", {"text": token})
+
+                # response 노드 완료 시 final_answer 캡처
+                elif kind == "on_chain_end" and node_name.endswith("_response"):
+                    output = event.get("data", {}).get("output", {})
+                    fa = output.get("final_answer")
+                    if fa:
+                        final_answer = fa
+
+            # 그래프 완료 — done 이벤트 전송
+            if final_answer:
+                done_data = final_answer.model_dump(exclude_none=True) if hasattr(final_answer, 'model_dump') else {}
+            else:
+                done_data = {"insight": UNKNOWN_RESPONSE}
+
+            yield _sse_event("done", done_data)
+
+        except Exception as e:
+            logger.error("[stream] 오류: %s", e, exc_info=True)
+            try:
+                yield _sse_event("error", {"message": ERROR_MESSAGES["server_error"]})
+            except Exception:
+                pass
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # 정적 파일 마운트

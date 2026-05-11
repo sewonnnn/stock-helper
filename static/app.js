@@ -206,8 +206,12 @@ function setButtonMode(mode){
 }
 
 function stopGeneration(){
+    cancelStreamRaf();
     if(abortController){ abortController.abort(); abortController=null; }
     if(currentLoadingId){ removeMessage(currentLoadingId); currentLoadingId=null; }
+    // 스트리밍 카드도 정리
+    const streamText = document.getElementById('stream-text');
+    if(streamText){ const wrapper = streamText.closest('.msg-wrapper'); if(wrapper) wrapper.remove(); }
     isLoading=false; setButtonMode('send');
 }
 
@@ -230,7 +234,13 @@ async function sendQuestion(){
     isLoading=true; setButtonMode('stop');
     currentLoadingId=addLoadingMessage();
     abortController=new AbortController();
-    const timeoutId=setTimeout(()=>abortController.abort(),60000);
+    const timeoutId=setTimeout(()=>abortController.abort(),90000);
+
+    let streamRoute = null;
+    let fullText = '';
+    let receivedDone = false;
+    let cardEl = null;    // 스트리밍 카드 DOM
+    let insightEl = null; // 텍스트 영역
 
     try {
         const r = await fetch(`${API_BASE}/chat`, {
@@ -241,35 +251,99 @@ async function sendQuestion(){
         });
         clearTimeout(timeoutId);
         if (!r.ok) throw new Error('서버 오류가 발생했습니다. ('+r.status+')');
-        const res = await r.json();
 
-        if(currentThreadId !== reqThreadId) return;
-        removeMessage(currentLoadingId); currentLoadingId=null;
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        if(res.success && res.data){
-            const serverThreadId = res.thread_id || reqThreadId;
-            if (serverThreadId !== reqThreadId) {
-                const store = loadStore();
-                const conv = store.conversations[reqThreadId];
-                if (conv) {
-                    delete store.conversations[reqThreadId];
-                    conv.id = serverThreadId;
-                    store.conversations[serverThreadId] = conv;
-                    if (store.activeId === reqThreadId) store.activeId = serverThreadId;
-                    saveStore(store);
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            if (currentThreadId !== reqThreadId) break;
+
+            buffer += decoder.decode(value, {stream: true});
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            let eventType = null;
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ') && eventType) {
+                    let payload;
+                    try { payload = JSON.parse(line.slice(6)); } catch(e) { continue; }
+
+                    if (eventType === 'meta') {
+                        streamRoute = payload.route;
+                        // 로딩 말풍선은 유지 — 카드는 아직 만들지 않음
+
+                    } else if (eventType === 'data') {
+                        // company 주가 데이터 도착 → 로딩 제거, 카드 생성 + 주가 표시
+                        if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
+                        if (!cardEl) {
+                            cardEl = addStreamCard(streamRoute);
+                            insightEl = cardEl.querySelector('#stream-text');
+                        }
+                        const topEl = cardEl.querySelector('#stream-data-top');
+                        if (topEl) topEl.innerHTML = renderPriceSection(payload);
+                        const container = document.getElementById('chatContainer');
+                        container.scrollTop = container.scrollHeight;
+
+                    } else if (eventType === 'chunk') {
+                        // 첫 chunk에서 카드가 아직 없으면 (비-company 라우트) 생성
+                        if (!cardEl) {
+                            if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
+                            cardEl = addStreamCard(streamRoute);
+                            insightEl = cardEl.querySelector('#stream-text');
+                        }
+                        if (insightEl && payload.text) {
+                            const sl = document.getElementById('stream-loading');
+                            if (sl) sl.remove();
+                            fullText += payload.text;
+                            renderStreamText(insightEl, fullText, streamRoute);
+                        }
+
+                    } else if (eventType === 'done') {
+                        receivedDone = true;
+                        if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
+                        const r = streamRoute || 'general';
+                        if (cardEl) {
+                            finalizeStreamCard(cardEl, payload, r);
+                        } else if (r === 'glossary' && payload.glossary) {
+                            // glossary: 카드 생성 후 타이핑 애니메이션
+                            cardEl = addStreamCard(r);
+                            insightEl = cardEl.querySelector('#stream-text');
+                            const sl = document.getElementById('stream-loading');
+                            if (sl) sl.remove();
+                            typewriteFinalize(cardEl, insightEl, payload, r);
+                        } else {
+                            addBotResponse(payload, r);
+                        }
+                        // localStorage 저장
+                        const serverThreadId = payload.thread_id || reqThreadId;
+                        addMessageToStore(serverThreadId, { role: 'assistant', data: payload, route: r, timestamp: Date.now() });
+                        renderSidebar();
+
+                    } else if (eventType === 'error') {
+                        if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
+                        if (cardEl) { const wrapper = cardEl.closest('.msg-wrapper'); if (wrapper) wrapper.remove(); }
+                        addErrorMessage(payload.message || '응답 생성 중 오류가 발생했습니다.');
+                    }
+                    eventType = null;
                 }
-                if (currentThreadId === reqThreadId) currentThreadId = serverThreadId;
             }
-            addBotResponse(res.data, res.route);
-            addMessageToStore(serverThreadId, { role: 'assistant', data: res.data, route: res.route, timestamp: Date.now() });
-            renderSidebar();
-        } else {
-            addErrorMessage(res.error || '응답을 생성할 수 없습니다.');
+        }
+        // 스트림 종료 후 done 없이 끝난 경우
+        if (!receivedDone && currentThreadId === reqThreadId) {
+            if (cardEl) { const wrapper = cardEl.closest('.msg-wrapper'); if (wrapper) wrapper.remove(); }
+            if (currentLoadingId) { removeMessage(currentLoadingId); currentLoadingId = null; }
+            addErrorMessage('응답 생성 중 연결이 끊어졌습니다. 다시 시도해 주세요.');
         }
     } catch(e){
         clearTimeout(timeoutId);
         if(e.name==='AbortError') return;
         if(currentThreadId === reqThreadId){
+            if (cardEl) { const wrapper = cardEl.closest('.msg-wrapper'); if (wrapper) wrapper.remove(); }
             if(currentLoadingId){ removeMessage(currentLoadingId); currentLoadingId=null; }
             const isNetworkErr = e instanceof TypeError || !e.message || e.message.includes('fetch');
             addErrorMessage(isNetworkErr ? '일시적으로 연결이 불안정합니다. 잠시 후 다시 시도해 주세요.' : e.message);
@@ -279,6 +353,211 @@ async function sendQuestion(){
             isLoading=false; abortController=null; currentLoadingId=null; setButtonMode('send');
         }
     }
+}
+
+// ── SSE 스트리밍 헬퍼 ──
+
+function addStreamCard(route) {
+    const c = document.getElementById('chatContainer');
+    const d = document.createElement('div');
+    d.className = 'msg-wrapper fade-in';
+
+    let innerHtml = '';
+    const loadingText = (route === 'company') ? '분석 중' : '정보 찾는 중';
+    const loadingSpan = `<span id="stream-loading" style="color:#9ca3af;font-size:13px">${loadingText}<span class="stream-loading-dot"></span></span>`;
+
+    // 상단: 주가/지표 등 구조화 데이터 영역
+    innerHtml += `<div id="stream-data-top"></div>`;
+
+    if (route === 'company' || route === 'news') {
+        innerHtml += `<div class="resp-section"><div class="insight-box"><div class="insight-label">핵심 요약</div><div class="insight-text" id="stream-text">${loadingSpan}</div></div></div>`;
+    } else if (route === 'glossary') {
+        innerHtml += `<div class="resp-section"><div class="resp-label">용어 설명</div><div class="resp-text" id="stream-text">${loadingSpan}</div></div>`;
+    } else {
+        innerHtml += `<div class="resp-section"><div class="resp-text" id="stream-text">${loadingSpan}</div></div>`;
+    }
+
+    // 하단: follow-up, sources 등 영역
+    innerHtml += `<div id="stream-data-bottom"></div>`;
+
+    d.innerHTML = `<div class="msg-row">${AI_AVATAR}<div style="flex:1;min-width:0"><div class="ai-card">${innerHtml}</div><div class="msg-ts" style="margin-top:4px">AI Assistant · ${ts()}</div></div></div>`;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    return d.querySelector('.ai-card');
+}
+
+let _streamRafId = null, _streamPending = null;
+
+function renderStreamText(el, fullText, route) {
+    _streamPending = { el, fullText, route };
+    if (_streamRafId) return;
+    _streamRafId = requestAnimationFrame(() => {
+        _streamRafId = null;
+        const p = _streamPending; if (!p) return;
+        _streamPending = null;
+        let display = p.fullText.replace(/(?:follow_up|후속질문)\s*[:：].*/gi, '').replace(/(?:company_intro|회사소개)\s*[:：].*/gi, '').trimEnd();
+        p.el.innerHTML = (p.route === 'glossary') ? fmtSent(display) : renderMd(display);
+        const container = document.getElementById('chatContainer');
+        container.scrollTop = container.scrollHeight;
+    });
+}
+
+function cancelStreamRaf() {
+    if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
+    _streamPending = null;
+}
+
+function finalizeStreamCard(cardEl, data, route) {
+    cancelStreamRaf();
+    const sl = document.getElementById('stream-loading');
+    if (sl) sl.remove();
+
+    const topEl = cardEl.querySelector('#stream-data-top');
+    const bottomEl = cardEl.querySelector('#stream-data-bottom');
+    const textEl = cardEl.querySelector('#stream-text');
+
+    // ── 상단: 주가 데이터 + 핵심 지표 (company/news 라우트) ──
+    let topHtml = '';
+    if (route === 'company' && data.price) topHtml += `<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
+
+    if (data.ticker_info || data.price) {
+        topHtml += `<div class="resp-section">`;
+        if (data.ticker_info) topHtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.ticker_info.company_name)}</span><span style="font-size:13px;color:#6b7280">${esc(data.ticker_info.ticker)}</span></div>`;
+        if (data.price) {
+            const cp=data.price.current_price, chg=data.price.change??0, chgPct=data.price.change_percent??0;
+            const up=chg>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
+            let pd='-';
+            if(cp!=null){
+                if(data.price.currency==='KRW') pd=`${Math.round(cp).toLocaleString()}원`;
+                else if(data.price.krw_price) pd=`${Math.round(data.price.krw_price).toLocaleString()}원 <span style="font-size:14px;color:#6b7280">($${cp.toLocaleString()})</span>`;
+                else pd=`$${cp.toLocaleString()}`;
+            }
+            topHtml += `<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:700;color:#1f2937">${pd}</span><span style="color:${clr};font-weight:600;font-size:14px">${arr} ${Math.abs(chgPct).toFixed(2)}%</span></div>`;
+            if(data.price.market_cap||data.price.market_cap_tier){
+                let capHtml='';
+                if(data.price.market_cap) capHtml+=`<span style="font-size:13px;color:#6b7280">시가총액 ${esc(data.price.market_cap)}</span>`;
+                if(data.price.market_cap_tier) capHtml+=`<span style="padding:1px 6px;background:#f3f4f6;border-radius:4px;font-size:11px;color:#6b7280;margin-left:6px">${esc(data.price.market_cap_tier)}</span>`;
+                topHtml+=`<div style="margin-top:4px">${capHtml}</div>`;
+            }
+        }
+        topHtml += `</div>`;
+    }
+
+    if (Array.isArray(data.key_metrics) && data.key_metrics.length) {
+        const items=data.key_metrics.map(m=>{
+            const lc=m.level==='높음'?'#dc2626':m.level==='낮음'?'#059669':'#6b7280';
+            return `<span style="font-size:13px;color:#6b7280">${esc(m.name)} ${esc(m.value)}</span><span style="font-size:12px;color:${lc};margin-left:2px">${esc(m.level)}</span>`;
+        }).join('<span style="color:#e5e7eb;margin:0 8px">|</span>');
+        topHtml += `<div class="resp-section" style="padding:8px 0">${items}</div>`;
+    }
+
+    if (topEl) topEl.innerHTML = topHtml;
+
+    // ── 텍스트 영역: 최종 텍스트로 갱신 + highlightTerms 적용 ──
+    if (textEl) {
+        let finalText = data.insight || data.glossary || '';
+        if (finalText) {
+            textEl.innerHTML = highlightTerms((route === 'glossary') ? fmtSent(finalText) : renderMd(finalText));
+        } else if (textEl.innerHTML) {
+            textEl.innerHTML = highlightTerms(textEl.innerHTML);
+        }
+    }
+
+    // ── 하단: 뉴스, 회사소개, 면책, 출처, 후속질문 ──
+    let bottomHtml = '';
+
+    // 뉴스 카드 (news 라우트)
+    if (Array.isArray(data.news) && data.news.length && route === 'news') {
+        const nc = data.news.map(n => `<div class="news-card"><a href="${esc(n.url)}" target="_blank" class="news-title">${esc(n.title)}</a><div class="news-meta">${esc(n.source)}${n.published_at?' · '+esc(n.published_at):''}</div>${n.summary?`<div class="news-summary">${esc(n.summary)}</div>`:''}</div>`).join('');
+        bottomHtml += `<div class="resp-section"><div class="resp-label">최근 뉴스</div>${nc}</div>`;
+    }
+
+    // 회사 소개
+    if (data.company_intro) bottomHtml += `<details class="resp-section"><summary style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#4b5563;cursor:pointer;user-select:none"><span class="details-arrow">▶</span>회사 소개</summary><div style="margin-top:8px" class="resp-text">${fmtSent(data.company_intro)}</div></details>`;
+
+    // 면책 문구
+    if (route === 'advisor' || route === 'general') bottomHtml += `<div style="font-size:13px;color:#003fb1;margin-bottom:16px">참고용 안내이며, 실제 투자는 본인의 판단으로 결정해 주세요.</div>`;
+
+    // 출처
+    if (Array.isArray(data.sources) && data.sources.filter(s=>s&&s.startsWith('http')).length) {
+        const validSources = data.sources.filter(s=>s&&s.startsWith('http'));
+        const sl = validSources.map(s=>{try{return `<a href="${esc(s)}" target="_blank" style="font-size:12px;color:#6b7280;text-decoration:underline">${esc(new URL(s).hostname.replace('www.',''))}</a>`}catch(e){return ''}}).filter(Boolean);
+        if (sl.length) bottomHtml += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #f3f4f6;font-size:11px;color:#9ca3af">출처: ${sl.join(' · ')}</div>`;
+    }
+
+    // 후속 질문
+    if (Array.isArray(data.follow_up) && data.follow_up.length) {
+        bottomHtml += `<div class="followup-chips">${data.follow_up.map(q=>`<button class="followup-chip" onclick="askQuestion('${esc(q)}')">${esc(q)}</button>`).join('')}</div>`;
+    }
+
+    if (bottomEl) bottomEl.innerHTML = bottomHtml;
+
+    // 용어 힌트
+    if (!glossaryHintShown && cardEl.innerHTML.includes('term-tooltip')) {
+        const hintHtml = `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#9ca3af;margin-bottom:12px"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>밑줄 친 용어를 클릭하면 뜻을 볼 수 있어요</div>`;
+        cardEl.insertAdjacentHTML('afterbegin', hintHtml);
+        glossaryHintShown = true;
+    }
+
+    // 스크롤
+    const container = document.getElementById('chatContainer');
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderPriceSection(data) {
+    let h = '';
+    if (data.price) h += `<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">주가 데이터는 15~20분 지연될 수 있습니다.</div>`;
+
+    if (data.ticker_info || data.price) {
+        h += `<div class="resp-section">`;
+        if (data.ticker_info) h += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:17px;font-weight:700;color:#1f2937">${esc(data.ticker_info.company_name)}</span><span style="font-size:13px;color:#6b7280">${esc(data.ticker_info.ticker)}</span></div>`;
+        if (data.price) {
+            const cp=data.price.current_price, chg=data.price.change??0, chgPct=data.price.change_percent??0;
+            const up=chg>=0, clr=up?'#059669':'#dc2626', arr=up?'▲':'▼';
+            let pd='-';
+            if(cp!=null){
+                if(data.price.currency==='KRW') pd=`${Math.round(cp).toLocaleString()}원`;
+                else if(data.price.krw_price) pd=`${Math.round(data.price.krw_price).toLocaleString()}원 <span style="font-size:14px;color:#6b7280">($${cp.toLocaleString()})</span>`;
+                else pd=`$${cp.toLocaleString()}`;
+            }
+            h += `<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:700;color:#1f2937">${pd}</span><span style="color:${clr};font-weight:600;font-size:14px">${arr} ${Math.abs(chgPct).toFixed(2)}%</span></div>`;
+            if(data.price.market_cap||data.price.market_cap_tier){
+                let capHtml='';
+                if(data.price.market_cap) capHtml+=`<span style="font-size:13px;color:#6b7280">시가총액 ${esc(data.price.market_cap)}</span>`;
+                if(data.price.market_cap_tier) capHtml+=`<span style="padding:1px 6px;background:#f3f4f6;border-radius:4px;font-size:11px;color:#6b7280;margin-left:6px">${esc(data.price.market_cap_tier)}</span>`;
+                h+=`<div style="margin-top:4px">${capHtml}</div>`;
+            }
+        }
+        h += `</div>`;
+    }
+
+    if (Array.isArray(data.key_metrics) && data.key_metrics.length) {
+        const items=data.key_metrics.map(m=>{
+            const lc=m.level==='높음'?'#dc2626':m.level==='낮음'?'#059669':'#6b7280';
+            return `<span style="font-size:13px;color:#6b7280">${esc(m.name)} ${esc(m.value)}</span><span style="font-size:12px;color:${lc};margin-left:2px">${esc(m.level)}</span>`;
+        }).join('<span style="color:#e5e7eb;margin:0 8px">|</span>');
+        h += `<div class="resp-section" style="padding:8px 0">${items}</div>`;
+    }
+    return h;
+}
+
+function typewriteFinalize(cardEl, textEl, data, route) {
+    const text = data.glossary || data.insight || '';
+    let idx = 0;
+    const chunkSize = 3;
+    const interval = 20;
+    const timer = setInterval(() => {
+        idx += chunkSize;
+        if (idx >= text.length) {
+            idx = text.length;
+            clearInterval(timer);
+            finalizeStreamCard(cardEl, data, route);
+            return;
+        }
+        textEl.innerHTML = fmtSent(text.substring(0, idx));
+        const container = document.getElementById('chatContainer');
+        container.scrollTop = container.scrollHeight;
+    }, interval);
 }
 
 
